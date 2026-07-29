@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.venv/
+.swiftpm/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+Assets/AppIcon.iconset/
+Assets/Icon.source/
+dist/
+artifacts/
+*.zip

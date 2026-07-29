@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Format
+        run: xcrun swift-format lint --recursive --strict Package.swift Sources Tests
+      - name: Test
+        run: swift test --parallel
+      - name: Build app bundle
+        run: scripts/build_app.sh release
+      - name: Verify bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 dist/Glosslet.app
+          test -x dist/Glosslet.app/Contents/MacOS/Glosslet
+          test -f dist/Glosslet.app/Contents/Resources/AppIcon.icns
