@@ -21,7 +21,7 @@ conversation with streaming answers and follow-up questions.
 
 <p align="center">
   <img
-    src="docs/images/conversation-preview.png"
+    src="docs/images/conversation-preview.jpg"
     width="470"
     alt="Glosslet floating conversation rendering Markdown, a display equation, and a table"
   >
