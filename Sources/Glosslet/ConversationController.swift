@@ -97,6 +97,79 @@ final class ConversationController: ObservableObject {
         }
     }
 
+    func loadRenderingPreview() {
+        selection = SelectionSnapshot(
+            text: "A deterministic preview of Glosslet's transcript renderer.",
+            sourceApplicationName: "Glosslet Preview",
+            sourceBundleIdentifier: nil,
+            sourceProcessIdentifier: ProcessInfo.processInfo.processIdentifier,
+            bounds: .zero
+        )
+        currentChoice = ModelChoice(
+            model: nil,
+            displayName: "Codex",
+            reasoningEffort: "low"
+        )
+        threadID = nil
+        activeTurnID = nil
+        isBusy = false
+        errorMessage = nil
+        pendingApproval = nil
+        statusText = L10n.done
+        messages = [
+            ConversationMessage(
+                role: .assistant,
+                text: """
+                    ## Why this matters
+
+                    Glosslet renders **CommonMark**, tables, task lists, links, \
+                    quotations, highlighted code, and local LaTeX without a \
+                    network renderer.
+
+                    Euler's identity is \\(e^{i\\pi} + 1 = 0\\). A display \
+                    equation stays readable when the panel narrows:
+
+                    \\[
+                    \\operatorname{softmax}(x_i)
+                    = \\frac{e^{x_i}}{\\sum_{j=1}^{n} e^{x_j}}
+                    \\]
+
+                    | Surface | Behavior |
+                    | --- | --- |
+                    | Markdown | Incremental, selectable rendering |
+                    | LaTeX | KaTeX with local fonts |
+                    | Code | Highlighting and one-click copy |
+
+                    ```swift
+                    struct Selection {
+                        let text: String
+                        let source: String
+                    }
+                    ```
+
+                    > Wide tables, equations, and code scroll inside their own
+                    > content area instead of stretching the panel.
+
+                    - [x] Persistent Codex task
+                    - [x] Streaming transcript
+                    - [ ] Your next follow-up
+                    """
+            ),
+            ConversationMessage(
+                role: .user,
+                text: "Can I keep this window visible while I work elsewhere?"
+            ),
+            ConversationMessage(
+                role: .assistant,
+                text: """
+                    Yes. Choose the **pin** in the header. By default the panel \
+                    is unpinned and disappears as soon as focus moves outside \
+                    Glosslet.
+                    """
+            ),
+        ]
+    }
+
     func explain(_ selection: SelectionSnapshot, forceNewTask: Bool = false) {
         operationTask?.cancel()
         self.selection = selection

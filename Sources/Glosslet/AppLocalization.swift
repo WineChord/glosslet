@@ -16,7 +16,23 @@ enum L10n {
 
     static let explain = text("Explain", "解释")
     static let copy = text("Copy", "复制")
+    static let copyCode = text("Copy", "复制代码")
     static let copied = text("Copied", "已复制")
+    static let image = text("Image", "图片")
+    static let close = text("Close", "关闭")
+    static let saved = text("Saved in Codex", "已存入 Codex")
+    static let pinWindow = text(
+        "Pin above other apps",
+        "固定在其他应用上方"
+    )
+    static let unpinWindow = text(
+        "Unpin and hide when focus moves away",
+        "取消固定，失焦后自动隐藏"
+    )
+    static let showConversation = text(
+        "Show current conversation",
+        "显示当前对话"
+    )
     static let settings = text("Settings…", "设置…")
     static let quit = text("Quit Glosslet", "退出 Glosslet")
     static let pause = text("Pause selection toolbar", "暂停划词工具条")
@@ -41,6 +57,10 @@ enum L10n {
     static let getStarted = text("Start using Glosslet", "开始使用 Glosslet")
     static let selectedFrom = text("Selected from", "选自")
     static let askFollowUp = text("Ask a follow-up…", "继续追问…")
+    static let returnHint = text(
+        "Return to send · Shift-Return for a new line",
+        "回车发送 · Shift-回车换行"
+    )
     static let send = text("Send", "发送")
     static let stop = text("Stop", "停止")
     static let newTask = text("New Codex task", "新建 Codex 任务")

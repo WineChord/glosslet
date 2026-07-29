@@ -22,6 +22,11 @@ mkdir -p "$contents_path/MacOS" "$contents_path/Resources"
 cp "$binary_root/Glosslet" "$contents_path/MacOS/Glosslet"
 cp "$repo_root/Packaging/Info.plist" "$contents_path/Info.plist"
 cp "$repo_root/Assets/AppIcon.icns" "$contents_path/Resources/AppIcon.icns"
+resource_bundle="$binary_root/Glosslet_Glosslet.bundle"
+test -d "$resource_bundle"
+ditto \
+    "$resource_bundle" \
+    "$contents_path/Resources/Glosslet_Glosslet.bundle"
 
 codesign \
     --force \

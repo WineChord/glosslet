@@ -3,10 +3,13 @@ import GlossletCore
 import SwiftUI
 
 private enum GlossletPalette {
-    static let accent = Color(
-        red: 0.17,
-        green: 0.16,
-        blue: 0.35
+    static let panelBorder = Color.primary.opacity(0.1)
+    static let subtleBorder = Color.primary.opacity(0.075)
+    static let subtleFill = Color.primary.opacity(0.045)
+    static let warning = Color(
+        red: 0.82,
+        green: 0.47,
+        blue: 0.12
     )
 }
 
@@ -29,171 +32,187 @@ struct SelectionToolbarView: View {
     let onCopy: () -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
-            toolbarButton(
+        HStack(spacing: 3) {
+            SelectionToolbarButton(
                 title: L10n.explain,
                 systemImage: "sparkles",
                 action: onExplain
             )
             Divider()
-                .frame(height: 18)
-            toolbarButton(
+                .frame(height: 17)
+                .opacity(0.6)
+            SelectionToolbarButton(
                 title: L10n.copy,
                 systemImage: "doc.on.doc",
                 action: onCopy
             )
         }
         .padding(5)
-        .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.18))
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.11))
         }
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .shadow(color: .black.opacity(0.13), radius: 18, y: 7)
     }
+}
 
-    private func toolbarButton(
-        title: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
+private struct SelectionToolbarButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12.5, weight: .semibold))
                 .padding(.horizontal, 9)
-                .padding(.vertical, 5)
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
+        .background(
+            isHovering ? GlossletPalette.subtleFill : Color.clear
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onHover { isHovering = $0 }
         .accessibilityLabel(title)
     }
 }
 
 struct ConversationView: View {
     @ObservedObject var conversation: ConversationController
+    @ObservedObject var presentation: ConversationPresentationState
+    let onClose: () -> Void
+
     @State private var followUp = ""
+    @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().opacity(0.55)
+            Divider().opacity(0.45)
             content
-            Divider().opacity(0.55)
+            Divider().opacity(0.45)
             composer
         }
-        .frame(minWidth: 390, idealWidth: 440, minHeight: 430)
-        .background(.regularMaterial)
-        .tint(GlossletPalette.accent)
+        .frame(minWidth: 410, idealWidth: 470, minHeight: 460)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(GlossletPalette.panelBorder)
+        }
+        .tint(.primary)
+        .ignoresSafeArea()
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            GlossletMark(size: 30)
-            VStack(alignment: .leading, spacing: 2) {
+            GlossletMark(size: 28)
+
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("Glosslet")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 14, weight: .semibold))
                     if conversation.threadID != nil {
-                        Label(L10n.taskSaved, systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .labelStyle(.titleAndIcon)
+                        Circle()
+                            .fill(Color.green.opacity(0.82))
+                            .frame(width: 5, height: 5)
+                            .accessibilityLabel(L10n.taskSaved)
                     }
                 }
-                HStack(spacing: 4) {
-                    Text(conversation.currentChoice.displayName)
-                    if let effort =
-                        conversation.currentChoice.reasoningEffort
-                    {
-                        Text("·")
-                        Text(reasoningLabel(effort))
-                    }
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+
+                Text(modelSummary)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 8)
 
-            Button {
+            HeaderIconButton(
+                systemImage: "plus",
+                help: L10n.newTask,
+                isEnabled: conversation.selection != nil
+            ) {
                 conversation.startNewTaskForCurrentSelection()
-            } label: {
-                Image(systemName: "plus.bubble")
-                    .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
-            .help(L10n.newTask)
-            .disabled(conversation.selection == nil)
 
-            Button {
+            HeaderIconButton(
+                systemImage: "arrow.up.right.square",
+                help: L10n.openCodex,
+                isEnabled: conversation.threadID != nil
+            ) {
                 conversation.openInCodex()
-            } label: {
-                Image(systemName: "arrow.up.forward.app")
-                    .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
-            .help(L10n.openCodex)
-            .disabled(conversation.threadID == nil)
+
+            HeaderIconButton(
+                systemImage:
+                    presentation.isPinned
+                    ? "pin.fill"
+                    : "pin",
+                help:
+                    presentation.isPinned
+                    ? L10n.unpinWindow
+                    : L10n.pinWindow,
+                isActive: presentation.isPinned
+            ) {
+                presentation.togglePin()
+            }
+
+            HeaderIconButton(
+                systemImage: "xmark",
+                help: L10n.close,
+                action: onClose
+            )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.thinMaterial)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.primary.opacity(0.018))
     }
 
     private var content: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    if let selection = conversation.selection {
-                        SelectionPreviewCard(selection: selection)
-                    }
+        VStack(spacing: 8) {
+            MarkdownTranscriptView(
+                selection: conversation.selection,
+                messages: conversation.messages
+            )
 
-                    ForEach(conversation.messages) { message in
-                        MessageView(message: message)
-                            .id(message.id)
-                    }
-
-                    if let approval = conversation.pendingApproval {
-                        ApprovalCard(
-                            approval: approval,
-                            onAllowOnce: {
-                                conversation.resolveApproval(allow: true)
-                            },
-                            onAllowSession: {
-                                conversation.resolveApproval(
-                                    allow: true,
-                                    forSession: true
-                                )
-                            },
-                            onDeny: {
-                                conversation.resolveApproval(allow: false)
-                            }
+            if let approval = conversation.pendingApproval {
+                ApprovalCard(
+                    approval: approval,
+                    onAllowOnce: {
+                        conversation.resolveApproval(allow: true)
+                    },
+                    onAllowSession: {
+                        conversation.resolveApproval(
+                            allow: true,
+                            forSession: true
                         )
-                        .id(approval.id)
+                    },
+                    onDeny: {
+                        conversation.resolveApproval(allow: false)
                     }
-
-                    if let error = conversation.errorMessage {
-                        ErrorCard(message: error)
-                    }
-                }
-                .padding(16)
+                )
+                .padding(.horizontal, 12)
             }
-            .onChange(of: conversation.messages) { _, messages in
-                guard let last = messages.last else {
-                    return
-                }
-                withAnimation(.easeOut(duration: 0.18)) {
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
+
+            if let error = conversation.errorMessage {
+                ErrorCard(message: error)
+                    .padding(.horizontal, 12)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.primary.opacity(0.008))
     }
 
     private var composer: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(
                     L10n.askFollowUp,
@@ -202,76 +221,93 @@ struct ConversationView: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
-                .lineLimit(1...5)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 9)
-                .background(.quaternary.opacity(0.55))
-                .clipShape(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
+                .lineLimit(1...6)
+                .focused($isComposerFocused)
                 .onSubmit {
                     submit()
                 }
 
-                if conversation.isBusy {
-                    Button {
+                ComposerActionButton(
+                    isBusy: conversation.isBusy,
+                    isEnabled: canSubmit
+                ) {
+                    if conversation.isBusy {
                         conversation.stop()
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .help(L10n.stop)
-                } else {
-                    Button {
+                    } else {
                         submit()
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .frame(width: 30, height: 30)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        followUp.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        ).isEmpty
-                    )
-                    .help(L10n.send)
                 }
             }
+            .padding(.leading, 11)
+            .padding(.trailing, 6)
+            .padding(.vertical, 6)
+            .background(GlossletPalette.subtleFill)
+            .clipShape(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(GlossletPalette.subtleBorder)
+            }
 
-            HStack {
+            HStack(spacing: 6) {
                 if conversation.isBusy {
                     ProgressView()
                         .controlSize(.mini)
                 } else {
-                    Image(systemName: "circle.fill")
-                        .font(.system(size: 6))
-                        .foregroundStyle(
+                    Circle()
+                        .fill(
                             conversation.errorMessage == nil
-                                ? Color.green
-                                : Color.orange
+                                ? Color.green.opacity(0.8)
+                                : GlossletPalette.warning
                         )
+                        .frame(width: 5, height: 5)
                 }
+
                 Text(conversation.statusText)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
                 Spacer()
-                Text(
-                    L10n.text(
-                        "Return to send · Shift-Return for a new line",
-                        "回车发送 · Shift-回车换行"
-                    )
-                )
-                .font(.system(size: 9.5))
-                .foregroundStyle(.tertiary)
+
+                Text(L10n.returnHint)
+                    .foregroundStyle(.tertiary)
             }
+            .font(.system(size: 9.75))
+            .foregroundStyle(.secondary)
         }
-        .padding(12)
-        .background(.thinMaterial)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 11)
+        .background(Color.primary.opacity(0.018))
+    }
+
+    private var modelSummary: String {
+        var components = [conversation.currentChoice.displayName]
+        if let effort = conversation.currentChoice.reasoningEffort {
+            components.append(reasoningLabel(effort))
+        }
+        if conversation.threadID != nil {
+            components.append(L10n.saved)
+        }
+        return components.joined(separator: "  ·  ")
+    }
+
+    private var canSubmit: Bool {
+        conversation.isBusy
+            || !followUp.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
     }
 
     private func submit() {
         let text = followUp
+        guard
+            !text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+        else {
+            return
+        }
         followUp = ""
         conversation.sendFollowUp(text)
     }
@@ -279,112 +315,79 @@ struct ConversationView: View {
     private func reasoningLabel(_ effort: String) -> String {
         switch effort {
         case "low":
-            return L10n.text("low reasoning", "低推理")
+            return L10n.text("Low", "低推理")
         case "minimal":
-            return L10n.text("minimal reasoning", "最小推理")
+            return L10n.text("Minimal", "最小推理")
         case "none":
-            return L10n.text("no reasoning", "无推理")
+            return L10n.text("None", "无推理")
         default:
-            return L10n.text("\(effort) reasoning", "\(effort) 推理")
-        }
-    }
-}
-
-private struct SelectionPreviewCard: View {
-    let selection: SelectionSnapshot
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label(
-                "\(L10n.selectedFrom) \(selection.sourceApplicationName)",
-                systemImage: "text.quote"
+            return L10n.text(
+                effort.capitalized,
+                "\(effort) 推理"
             )
-            .font(.system(size: 10.5, weight: .semibold))
-            .foregroundStyle(.secondary)
-
-            Text(selection.preview)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(5)
-                .textSelection(.enabled)
-        }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(GlossletPalette.accent.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(GlossletPalette.accent.opacity(0.12))
         }
     }
 }
 
-private struct MessageView: View {
-    let message: ConversationMessage
+private struct HeaderIconButton: View {
+    let systemImage: String
+    let help: String
+    var isEnabled = true
+    var isActive = false
+    let action: () -> Void
+
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if message.role == .user {
-                Spacer(minLength: 42)
-            }
-
-            VStack(alignment: .leading, spacing: 7) {
-                if message.text.isEmpty && message.isStreaming {
-                    HStack(spacing: 7) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(L10n.thinking)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    MarkdownText(message.text)
-                }
-            }
-            .padding(message.role == .user ? 10 : 0)
-            .background(
-                message.role == .user
-                    ? GlossletPalette.accent.opacity(0.12)
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11.5, weight: .semibold))
+                .frame(width: 27, height: 27)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(
+            isActive
+                ? Color(nsColor: .windowBackgroundColor)
+                : Color.primary.opacity(isEnabled ? 0.82 : 0.3)
+        )
+        .background(
+            isActive
+                ? Color.primary
+                : isHovering && isEnabled
+                    ? GlossletPalette.subtleFill
                     : Color.clear
-            )
-            .clipShape(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-            )
-            .frame(
-                maxWidth: .infinity,
-                alignment: message.role == .user ? .trailing : .leading
-            )
-
-            if message.role == .assistant {
-                Spacer(minLength: 8)
-            }
-        }
+        )
+        .clipShape(Circle())
+        .disabled(!isEnabled)
+        .onHover { isHovering = $0 }
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 
-private struct MarkdownText: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
+private struct ComposerActionButton: View {
+    let isBusy: Bool
+    let isEnabled: Bool
+    let action: () -> Void
 
     var body: some View {
-        Text(attributedText)
-            .font(.system(size: 13))
-            .lineSpacing(3)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var attributedText: AttributedString {
-        (try? AttributedString(
-            markdown: text,
-            options: .init(
-                interpretedSyntax: .full,
-                failurePolicy: .returnPartiallyParsedIfPossible
-            )
-        )) ?? AttributedString(text)
+        Button(action: action) {
+            Image(systemName: isBusy ? "stop.fill" : "arrow.up")
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 28, height: 28)
+                .foregroundStyle(
+                    Color(nsColor: .windowBackgroundColor)
+                )
+                .background(
+                    Color.primary.opacity(isEnabled ? 0.94 : 0.2)
+                )
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .help(isBusy ? L10n.stop : L10n.send)
+        .accessibilityLabel(isBusy ? L10n.stop : L10n.send)
     }
 }
 
@@ -395,27 +398,29 @@ private struct ApprovalCard: View {
     let onDeny: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             Label(approval.title, systemImage: "hand.raised.fill")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11.5, weight: .semibold))
             Text(approval.detail)
-                .font(.system(.caption, design: .monospaced))
-                .lineLimit(5)
+                .font(.system(size: 10.5, design: .monospaced))
+                .lineLimit(4)
                 .textSelection(.enabled)
             HStack {
                 Button(L10n.deny, action: onDeny)
+                    .buttonStyle(.plain)
                 Spacer()
                 Button(L10n.allowSession, action: onAllowSession)
                 Button(L10n.allowOnce, action: onAllowOnce)
                     .buttonStyle(.borderedProminent)
             }
+            .font(.system(size: 11))
         }
-        .padding(12)
-        .background(Color.orange.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .padding(11)
+        .background(GlossletPalette.warning.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.22))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(GlossletPalette.warning.opacity(0.2))
         }
     }
 }
@@ -426,15 +431,16 @@ private struct ErrorCard: View {
     var body: some View {
         Label {
             Text(message)
+                .lineLimit(4)
                 .textSelection(.enabled)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
         }
-        .font(.system(size: 11.5))
-        .foregroundStyle(.orange)
-        .padding(10)
+        .font(.system(size: 10.5))
+        .foregroundStyle(GlossletPalette.warning)
+        .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(GlossletPalette.warning.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

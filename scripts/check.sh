@@ -9,5 +9,8 @@ xcrun swift-format lint \
     --recursive \
     --strict \
     Package.swift Sources Tests
+node --check \
+    Sources/Glosslet/Resources/MarkdownRenderer/renderer.js
+node scripts/check_renderer.mjs
 swift test --parallel
 "$repo_root/scripts/build_app.sh" release

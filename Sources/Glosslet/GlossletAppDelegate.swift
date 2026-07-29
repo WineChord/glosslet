@@ -32,12 +32,26 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var subscriptions = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let isRenderingPreview = ProcessInfo.processInfo.arguments.contains(
+            "--render-preview"
+        )
         configureStatusItem()
         bindPreferences()
         selectionMonitor.start()
         conversation.prepare()
 
-        if !preferences.completedOnboarding
+        if isRenderingPreview {
+            conversation.loadRenderingPreview()
+            let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
+            panels.showConversation(
+                anchor: CGRect(
+                    x: visibleFrame.midX,
+                    y: visibleFrame.midY,
+                    width: 1,
+                    height: 1
+                )
+            )
+        } else if !preferences.completedOnboarding
             || !AccessibilitySelectionReader.isTrusted
         {
             panels.showOnboarding()
@@ -57,11 +71,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             withLength: NSStatusItem.variableLength
         )
         if let button = item.button {
-            button.image = NSImage(
-                systemSymbolName: "text.magnifyingglass",
-                accessibilityDescription: "Glosslet"
-            )
-            button.image?.isTemplate = true
+            button.image = Self.menuBarImage()
             button.toolTip = "Glosslet"
         }
         let menu = NSMenu()
@@ -97,6 +107,20 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             accessibilityDescription: nil
         )
         menu.addItem(stateItem)
+
+        let conversationItem = NSMenuItem(
+            title: L10n.showConversation,
+            action: #selector(showConversation),
+            keyEquivalent: ""
+        )
+        conversationItem.target = self
+        conversationItem.image = NSImage(
+            systemSymbolName: "bubble.left.and.text.bubble.right",
+            accessibilityDescription: nil
+        )
+        conversationItem.isEnabled =
+            conversation.selection != nil || conversation.threadID != nil
+        menu.addItem(conversationItem)
 
         let settingsItem = NSMenuItem(
             title: L10n.settings,
@@ -145,6 +169,10 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         panels.showSettings()
     }
 
+    @objc private func showConversation() {
+        panels.showExistingConversation()
+    }
+
     @objc private func requestAccessibility() {
         AccessibilitySelectionReader.requestTrustPrompt()
         panels.showOnboarding()
@@ -152,5 +180,41 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    private static func menuBarImage() -> NSImage {
+        let image = NSImage(
+            size: NSSize(width: 18, height: 18),
+            flipped: false
+        ) { _ in
+            let path = NSBezierPath()
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            path.lineWidth = 1.65
+
+            for y in [5.0, 9.0, 13.0] {
+                path.move(to: NSPoint(x: 3.2, y: y))
+                path.curve(
+                    to: NSPoint(x: 13.4, y: 9),
+                    controlPoint1: NSPoint(x: 9.2, y: y),
+                    controlPoint2: NSPoint(x: 10.7, y: 9)
+                )
+            }
+            NSColor.black.setStroke()
+            path.stroke()
+
+            let aperture = NSBezierPath()
+            aperture.move(to: NSPoint(x: 13.4, y: 7.2))
+            aperture.line(to: NSPoint(x: 15.2, y: 9))
+            aperture.line(to: NSPoint(x: 13.4, y: 10.8))
+            aperture.line(to: NSPoint(x: 11.6, y: 9))
+            aperture.close()
+            NSColor.black.setFill()
+            aperture.fill()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Glosslet"
+        return image
     }
 }

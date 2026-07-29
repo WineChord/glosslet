@@ -11,12 +11,21 @@
 <p align="center">
   <a href="LICENSE">MIT License</a> ·
   <a href="docs/PRIVACY.md">Privacy</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a>
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="THIRD_PARTY_NOTICES.md">Third-party notices</a>
 </p>
 
 Glosslet is a native macOS menu bar app that adds a tiny **Explain · Copy**
 toolbar beside text selections. Explain opens a compact floating Codex
 conversation with streaming answers and follow-up questions.
+
+<p align="center">
+  <img
+    src="docs/images/conversation-preview.png"
+    width="470"
+    alt="Glosslet floating conversation rendering Markdown, a display equation, and a table"
+  >
+</p>
 
 Most importantly, Glosslet conversations are normal, persistent Codex tasks.
 They appear in the Codex app, retain their history, and can be continued from
@@ -31,7 +40,11 @@ either place. Glosslet never uses hidden or ephemeral threads.
 - Works across native apps, browsers, editors, and other macOS interfaces that
   expose selected text through Accessibility.
 - The selection toolbar contains exactly two actions: **Explain** and **Copy**.
-- Streams Codex responses into a resizable floating conversation.
+- Streams Codex responses into a polished, resizable floating conversation.
+- Renders headings, lists, task lists, tables, quotations, links, highlighted
+  code, inline math, and display LaTeX using a fully local renderer.
+- Starts unpinned and disappears when focus moves elsewhere; pin it when the
+  conversation should remain above other apps.
 - Supports follow-ups, stopping a turn, approvals, and opening the exact task
   in the Codex app.
 - Reloads persistent history before every continuation, so turns added in the
@@ -57,6 +70,10 @@ either place. Glosslet never uses hidden or ephemeral threads.
 Password fields and other secure controls are intentionally ignored. Apps that
 render text without exposing a macOS Accessibility selection may not be
 detectable.
+
+Remote Markdown images are shown as links instead of loading automatically.
+This keeps transcript rendering local and prevents an answer from silently
+contacting a third-party image host.
 
 ## Build and run
 
@@ -106,6 +123,9 @@ Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅
 点击“解释”后，Glosslet 会在悬浮小窗里流式显示 Codex 回复，并支持直接追问。
 所有会话都是可持久化的原生 Codex 任务：你可以在自己的 Codex App 中找到它们，
 查看完整历史，并从任意一侧继续对话。
+
+悬浮小窗支持 Markdown、表格、代码高亮与 LaTeX。默认不固定，点击其他地方就会
+自动隐藏；需要边工作边查看时，可以点击标题栏中的固定按钮。
 
 默认配置会动态选择 Codex 当前最新的默认模型，并使用该模型支持的最低推理程度；
 也可以改为完全沿用 Codex 默认值，或手动选择模型与推理程度。

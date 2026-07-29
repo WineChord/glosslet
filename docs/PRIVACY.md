@@ -11,6 +11,11 @@ Glosslet is designed to have a small, understandable data boundary.
 
 Glosslet has no analytics or telemetry.
 
+Markdown and LaTeX are rendered with libraries bundled inside the app. The
+renderer uses a non-persistent WebKit data store, does not use a CDN, blocks
+runtime network connections, and does not automatically load remote Markdown
+images. External links and image destinations open only after a user click.
+
 ## What is sent to Codex
 
 Only after the user clicks **Explain**, Glosslet sends:

@@ -20,6 +20,10 @@ jobs:
         run: swift --version
       - name: Format
         run: xcrun swift-format lint --recursive --strict Package.swift Sources Tests
+      - name: Renderer
+        run: |
+          node --check Sources/Glosslet/Resources/MarkdownRenderer/renderer.js
+          node scripts/check_renderer.mjs
       - name: Test
         run: swift test --parallel
       - name: Build app bundle
@@ -29,3 +33,5 @@ jobs:
           codesign --verify --deep --strict --verbose=2 dist/Glosslet.app
           test -x dist/Glosslet.app/Contents/MacOS/Glosslet
           test -f dist/Glosslet.app/Contents/Resources/AppIcon.icns
+          test -f dist/Glosslet.app/Contents/Resources/Glosslet_Glosslet.bundle/Contents/Resources/MarkdownRenderer/index.html
+          test -f dist/Glosslet.app/Contents/Resources/Glosslet_Glosslet.bundle/Contents/Resources/MarkdownRenderer/vendor/katex.min.js

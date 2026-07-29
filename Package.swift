@@ -23,7 +23,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "Glosslet",
-            dependencies: ["GlossletCore"]
+            dependencies: ["GlossletCore"],
+            resources: [
+                .copy("Resources/MarkdownRenderer")
+            ]
         ),
         .testTarget(
             name: "GlossletCoreTests",

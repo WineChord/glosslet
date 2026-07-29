@@ -2,6 +2,15 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.0 — 2026-07-30
+
+- Added offline Markdown, table, task-list, code-highlight, and LaTeX rendering.
+- Added one-click copying for fenced code blocks.
+- Added default click-away dismissal and an explicit pin control.
+- Refined the conversation shell, composer, toolbar, status, and window chrome.
+- Reworked the app and menu-bar marks with a quieter monochrome identity.
+- Added a deterministic rendering preview and packaged-resource validation.
+
 ## 0.1.0 — 2026-07-29
 
 - Added cross-app Accessibility selection detection.
