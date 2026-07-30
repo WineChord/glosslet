@@ -2,6 +2,18 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.1 — 2026-07-30
+
+- Anchored the selection toolbar to the mouse-selection endpoint or
+  Accessibility insertion point instead of the full selection rectangle.
+- Rejected zero-sized Accessibility geometry and added screen-safe fallbacks.
+- Added model and reasoning-effort controls directly to the conversation panel.
+- Refined the header, configuration drawer, transcript rhythm, and composer
+  around a consistent layout grid.
+- Kept click-away dismissal compatible with in-panel configuration controls.
+- Added live Accessibility-status refresh, a direct Settings deep link, and
+  recovery guidance for stale permissions after an ad-hoc rebuild.
+
 ## 0.2.0 — 2026-07-30
 
 - Added offline Markdown, table, task-list, code-highlight, and LaTeX rendering.

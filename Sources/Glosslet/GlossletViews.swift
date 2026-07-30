@@ -32,26 +32,26 @@ struct SelectionToolbarView: View {
     let onCopy: () -> Void
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2) {
             SelectionToolbarButton(
                 title: L10n.explain,
                 systemImage: "sparkles",
                 action: onExplain
             )
             Divider()
-                .frame(height: 17)
-                .opacity(0.6)
+                .frame(height: 16)
+                .opacity(0.5)
             SelectionToolbarButton(
                 title: L10n.copy,
                 systemImage: "doc.on.doc",
                 action: onCopy
             )
         }
-        .padding(5)
+        .padding(4)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.11))
         }
         .shadow(color: .black.opacity(0.13), radius: 18, y: 7)
@@ -68,9 +68,9 @@ private struct SelectionToolbarButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .padding(.horizontal, 9)
-                .padding(.vertical, 6)
+                .frame(height: 30)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -90,6 +90,7 @@ struct ConversationView: View {
     let onClose: () -> Void
 
     @State private var followUp = ""
+    @State private var configurationMenu: ConfigurationMenu?
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -100,7 +101,7 @@ struct ConversationView: View {
             Divider().opacity(0.45)
             composer
         }
-        .frame(minWidth: 410, idealWidth: 470, minHeight: 460)
+        .frame(minWidth: 430, idealWidth: 490, minHeight: 500)
         .background(Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
@@ -112,68 +113,98 @@ struct ConversationView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            GlossletMark(size: 28)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("Glosslet")
-                        .font(.system(size: 14, weight: .semibold))
-                    if conversation.threadID != nil {
-                        Circle()
-                            .fill(Color.green.opacity(0.82))
-                            .frame(width: 5, height: 5)
-                            .accessibilityLabel(L10n.taskSaved)
-                    }
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                GlossletMark(size: 27)
+                Text("Glosslet")
+                    .font(.system(size: 14, weight: .semibold))
+                    .tracking(-0.1)
+                if conversation.threadID != nil {
+                    Circle()
+                        .fill(Color.green.opacity(0.82))
+                        .frame(width: 5, height: 5)
+                        .help(L10n.taskSaved)
+                        .accessibilityLabel(L10n.taskSaved)
                 }
 
-                Text(modelSummary)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Spacer(minLength: 10)
+
+                HStack(spacing: 3) {
+                    HeaderIconButton(
+                        systemImage: "plus",
+                        help: L10n.newTask,
+                        isEnabled: conversation.selection != nil
+                    ) {
+                        conversation.startNewTaskForCurrentSelection()
+                    }
+
+                    HeaderIconButton(
+                        systemImage: "arrow.up.right.square",
+                        help: L10n.openCodex,
+                        isEnabled: conversation.threadID != nil
+                    ) {
+                        conversation.openInCodex()
+                    }
+
+                    HeaderIconButton(
+                        systemImage:
+                            presentation.isPinned
+                            ? "pin.fill"
+                            : "pin",
+                        help:
+                            presentation.isPinned
+                            ? L10n.unpinWindow
+                            : L10n.pinWindow,
+                        isActive: presentation.isPinned
+                    ) {
+                        presentation.togglePin()
+                    }
+
+                    HeaderIconButton(
+                        systemImage: "xmark",
+                        help: L10n.close,
+                        action: onClose
+                    )
+                }
             }
+            .padding(.horizontal, 16)
+            .frame(height: 50)
 
-            Spacer(minLength: 8)
-
-            HeaderIconButton(
-                systemImage: "plus",
-                help: L10n.newTask,
-                isEnabled: conversation.selection != nil
-            ) {
-                conversation.startNewTaskForCurrentSelection()
+            HStack(spacing: 8) {
+                ModelSelectionControl(
+                    conversation: conversation,
+                    isExpanded: configurationMenu == .model
+                ) {
+                    toggleConfigurationMenu(.model)
+                }
+                ReasoningSelectionControl(
+                    conversation: conversation,
+                    isExpanded: configurationMenu == .reasoning
+                ) {
+                    toggleConfigurationMenu(.reasoning)
+                }
+                Spacer(minLength: 4)
             }
-
-            HeaderIconButton(
-                systemImage: "arrow.up.right.square",
-                help: L10n.openCodex,
-                isEnabled: conversation.threadID != nil
-            ) {
-                conversation.openInCodex()
-            }
-
-            HeaderIconButton(
-                systemImage:
-                    presentation.isPinned
-                    ? "pin.fill"
-                    : "pin",
-                help:
-                    presentation.isPinned
-                    ? L10n.unpinWindow
-                    : L10n.pinWindow,
-                isActive: presentation.isPinned
-            ) {
-                presentation.togglePin()
-            }
-
-            HeaderIconButton(
-                systemImage: "xmark",
-                help: L10n.close,
-                action: onClose
+            .padding(.horizontal, 16)
+            .padding(
+                .bottom,
+                configurationMenu == nil ? 10 : 8
             )
+
+            if let configurationMenu {
+                configurationDrawer(for: configurationMenu)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
+                    .transition(
+                        .move(edge: .top).combined(with: .opacity)
+                    )
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
         .background(Color.primary.opacity(0.018))
+        .animation(
+            .easeOut(duration: 0.14),
+            value: configurationMenu
+        )
     }
 
     private var content: some View {
@@ -199,12 +230,12 @@ struct ConversationView: View {
                         conversation.resolveApproval(allow: false)
                     }
                 )
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 16)
             }
 
             if let error = conversation.errorMessage {
                 ErrorCard(message: error)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -238,9 +269,10 @@ struct ConversationView: View {
                     }
                 }
             }
-            .padding(.leading, 11)
-            .padding(.trailing, 6)
-            .padding(.vertical, 6)
+            .padding(.leading, 12)
+            .padding(.trailing, 7)
+            .padding(.vertical, 7)
+            .frame(minHeight: 42)
             .background(GlossletPalette.subtleFill)
             .clipShape(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -266,30 +298,21 @@ struct ConversationView: View {
 
                 Text(conversation.statusText)
                     .lineLimit(1)
+                    .layoutPriority(1)
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Text(L10n.returnHint)
                     .foregroundStyle(.tertiary)
+                    .fixedSize()
             }
             .font(.system(size: 9.75))
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 11)
+        .padding(.horizontal, 16)
+        .padding(.top, 11)
+        .padding(.bottom, 12)
         .background(Color.primary.opacity(0.018))
-    }
-
-    private var modelSummary: String {
-        var components = [conversation.currentChoice.displayName]
-        if let effort = conversation.currentChoice.reasoningEffort {
-            components.append(reasoningLabel(effort))
-        }
-        if conversation.threadID != nil {
-            components.append(L10n.saved)
-        }
-        return components.joined(separator: "  ·  ")
     }
 
     private var canSubmit: Bool {
@@ -312,19 +335,303 @@ struct ConversationView: View {
         conversation.sendFollowUp(text)
     }
 
-    private func reasoningLabel(_ effort: String) -> String {
-        switch effort {
-        case "low":
-            return L10n.text("Low", "低推理")
-        case "minimal":
-            return L10n.text("Minimal", "最小推理")
-        case "none":
-            return L10n.text("None", "无推理")
-        default:
-            return L10n.text(
-                effort.capitalized,
-                "\(effort) 推理"
+    private func toggleConfigurationMenu(_ menu: ConfigurationMenu) {
+        configurationMenu = configurationMenu == menu ? nil : menu
+    }
+
+    @ViewBuilder
+    private func configurationDrawer(
+        for menu: ConfigurationMenu
+    ) -> some View {
+        switch menu {
+        case .model:
+            ModelSelectionDrawer(
+                conversation: conversation,
+                onDismiss: { configurationMenu = nil }
             )
+        case .reasoning:
+            ReasoningSelectionDrawer(
+                conversation: conversation,
+                onDismiss: { configurationMenu = nil }
+            )
+        }
+    }
+}
+
+private enum ConfigurationMenu {
+    case model
+    case reasoning
+}
+
+private struct ModelSelectionControl: View {
+    @ObservedObject var conversation: ConversationController
+    let isExpanded: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            SelectorPill(
+                systemImage: "cpu",
+                title: conversation.currentChoice.displayName,
+                width: 180,
+                isExpanded: isExpanded
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(conversation.isBusy)
+        .help(L10n.chooseModel)
+        .accessibilityLabel(
+            "\(L10n.chooseModel): \(conversation.currentChoice.displayName)"
+        )
+    }
+}
+
+private struct ReasoningSelectionControl: View {
+    @ObservedObject var conversation: ConversationController
+    let isExpanded: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            SelectorPill(
+                systemImage: "slider.horizontal.3",
+                title: reasoningTitle,
+                width: 138,
+                isExpanded: isExpanded
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            conversation.isBusy
+                || conversation.reasoningOptions.isEmpty
+        )
+        .help(L10n.chooseReasoning)
+        .accessibilityLabel(
+            "\(L10n.chooseReasoning): \(reasoningTitle)"
+        )
+    }
+
+    private var reasoningTitle: String {
+        guard let effort = conversation.currentChoice.reasoningEffort else {
+            return L10n.automatic
+        }
+        return "\(L10n.reasoning) · \(L10n.reasoningLabel(effort))"
+    }
+}
+
+private struct ModelSelectionDrawer: View {
+    @ObservedObject var conversation: ConversationController
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ConfigurationDrawer(title: L10n.chooseModel) {
+            ConfigurationOptionButton(
+                title: L10n.latestLowest,
+                subtitle: conversation.visibleModels
+                    .first(where: \.isDefault)?.displayName,
+                isSelected:
+                    conversation.activeModelPolicy == .latestLowest
+            ) {
+                conversation.selectLatestModelAndLowestEffort()
+                onDismiss()
+            }
+
+            ConfigurationOptionButton(
+                title: L10n.codexDefaults,
+                subtitle: L10n.text(
+                    "Use the model and effort from Codex configuration",
+                    "使用 Codex 配置中的模型与推理强度"
+                ),
+                isSelected:
+                    conversation.activeModelPolicy == .codexDefault
+            ) {
+                conversation.selectCodexDefaults()
+                onDismiss()
+            }
+
+            if !conversation.visibleModels.isEmpty {
+                Divider()
+                    .padding(.vertical, 3)
+
+                ForEach(conversation.visibleModels) { model in
+                    ConfigurationOptionButton(
+                        title: model.displayName,
+                        subtitle: model.model,
+                        isSelected:
+                            conversation.activeModelPolicy == .custom
+                            && conversation.currentChoice.model
+                                == model.model
+                    ) {
+                        conversation.selectModel(model)
+                        onDismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ReasoningSelectionDrawer: View {
+    @ObservedObject var conversation: ConversationController
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ConfigurationDrawer(title: L10n.chooseReasoning) {
+            ForEach(
+                conversation.reasoningOptions,
+                id: \.effort
+            ) { option in
+                ConfigurationOptionButton(
+                    title: L10n.reasoningLabel(option.effort),
+                    subtitle: L10n.reasoningDescription(
+                        option.effort,
+                        fallback: option.description
+                    ),
+                    isSelected:
+                        conversation.currentChoice.reasoningEffort
+                        == option.effort
+                ) {
+                    conversation.selectReasoningEffort(option.effort)
+                    onDismiss()
+                }
+            }
+        }
+    }
+}
+
+private struct ConfigurationDrawer<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 11)
+                .frame(height: 32)
+
+            Divider().opacity(0.5)
+
+            ScrollView {
+                VStack(spacing: 2) {
+                    content
+                }
+                .padding(6)
+            }
+            .frame(maxHeight: 190)
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(GlossletPalette.panelBorder)
+        }
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 5)
+    }
+}
+
+private struct ConfigurationOptionButton: View {
+    let title: String
+    let subtitle: String?
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 9) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 14)
+                    .opacity(isSelected ? 1 : 0)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 9.75))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .background(
+                isHovering || isSelected
+                    ? GlossletPalette.subtleFill
+                    : Color.clear
+            )
+            .clipShape(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(
+            [title, subtitle]
+                .compactMap { $0 }
+                .joined(separator: ", ")
+        )
+    }
+}
+
+private struct SelectorPill: View {
+    let systemImage: String
+    let title: String
+    let width: CGFloat
+    let isExpanded: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 13)
+            Text(title)
+                .font(.system(size: 11.25, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 2)
+            Image(
+                systemName:
+                    isExpanded ? "chevron.up" : "chevron.down"
+            )
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 9)
+        .frame(width: width, height: 30)
+        .contentShape(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+        )
+        .background(GlossletPalette.subtleFill)
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(GlossletPalette.subtleBorder)
         }
     }
 }

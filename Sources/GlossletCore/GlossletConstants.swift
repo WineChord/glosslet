@@ -5,8 +5,8 @@ public enum GlossletConstants {
     public static let executableName = "Glosslet"
     public static let bundleIdentifier = "com.winechord.glosslet"
     public static let clientName = "glosslet"
-    public static let appVersion = "0.1.0"
-    public static let buildNumber = "1"
+    public static let appVersion = "0.2.1"
+    public static let buildNumber = "3"
 
     public static let codexPathEnvironmentKey = "GLOSSLET_CODEX_PATH"
     public static let requestTimeoutSeconds: UInt64 = 20

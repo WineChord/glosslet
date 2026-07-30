@@ -7,6 +7,7 @@ public struct SelectionSnapshot: Equatable, Sendable {
     public let sourceBundleIdentifier: String?
     public let sourceProcessIdentifier: Int32
     public let bounds: CGRect
+    public let anchorBounds: CGRect
     public let capturedAt: Date
 
     public init(
@@ -15,6 +16,7 @@ public struct SelectionSnapshot: Equatable, Sendable {
         sourceBundleIdentifier: String?,
         sourceProcessIdentifier: Int32,
         bounds: CGRect,
+        anchorBounds: CGRect? = nil,
         capturedAt: Date = Date()
     ) {
         self.text = text
@@ -22,6 +24,7 @@ public struct SelectionSnapshot: Equatable, Sendable {
         self.sourceBundleIdentifier = sourceBundleIdentifier
         self.sourceProcessIdentifier = sourceProcessIdentifier
         self.bounds = bounds
+        self.anchorBounds = anchorBounds ?? bounds
         self.capturedAt = capturedAt
     }
 

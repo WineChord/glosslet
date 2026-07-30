@@ -67,6 +67,7 @@ final class ConversationController: ObservableObject {
     private var pendingAssistantDelta = ""
     private var streamedItemIDs = Set<String>()
     private var catalogLoaded = false
+    private var preferenceSubscriptions = Set<AnyCancellable>()
 
     init(
         client: CodexAppServerClient = CodexAppServerClient(),
@@ -83,6 +84,16 @@ final class ConversationController: ObservableObject {
                 self?.handle(event)
             }
         }
+        Publishers.CombineLatest3(
+            preferences.$modelPolicy.removeDuplicates(),
+            preferences.$customModelID.removeDuplicates(),
+            preferences.$customEffort.removeDuplicates()
+        )
+        .dropFirst()
+        .sink { [weak self] _ in
+            self?.resolveCurrentChoice()
+        }
+        .store(in: &preferenceSubscriptions)
     }
 
     deinit {
@@ -98,6 +109,32 @@ final class ConversationController: ObservableObject {
     }
 
     func loadRenderingPreview() {
+        availableModels = [
+            CodexModel(
+                id: "gpt-5.6-sol",
+                model: "gpt-5.6-sol",
+                displayName: "GPT-5.6-Sol",
+                description: "Glosslet rendering preview",
+                hidden: false,
+                isDefault: true,
+                defaultReasoningEffort: "medium",
+                supportedReasoningEfforts: [
+                    ReasoningEffortOption(
+                        effort: "low",
+                        description: "Fast responses"
+                    ),
+                    ReasoningEffortOption(
+                        effort: "medium",
+                        description: "Balanced reasoning"
+                    ),
+                    ReasoningEffortOption(
+                        effort: "high",
+                        description: "Deeper reasoning"
+                    ),
+                ]
+            )
+        ]
+        catalogLoaded = true
         selection = SelectionSnapshot(
             text: "A deterministic preview of Glosslet's transcript renderer.",
             sourceApplicationName: "Glosslet Preview",
@@ -106,8 +143,8 @@ final class ConversationController: ObservableObject {
             bounds: .zero
         )
         currentChoice = ModelChoice(
-            model: nil,
-            displayName: "Codex",
+            model: "gpt-5.6-sol",
+            displayName: "GPT-5.6-Sol",
             reasoningEffort: "low"
         )
         threadID = nil
@@ -192,12 +229,7 @@ final class ConversationController: ObservableObject {
                 if !catalogLoaded {
                     await refreshModels(showErrors: false)
                 }
-                currentChoice = ModelSelection.resolve(
-                    policy: preferences.modelPolicy,
-                    models: availableModels,
-                    customModelID: preferences.customModelID,
-                    customEffort: preferences.customEffort
-                )
+                resolveCurrentChoice()
 
                 let shouldCreate =
                     forceNewTask
@@ -344,18 +376,91 @@ final class ConversationController: ObservableObject {
         do {
             availableModels = try await client.listModels()
             catalogLoaded = true
-            currentChoice = ModelSelection.resolve(
-                policy: preferences.modelPolicy,
-                models: availableModels,
-                customModelID: preferences.customModelID,
-                customEffort: preferences.customEffort
-            )
+            resolveCurrentChoice()
         } catch {
             catalogLoaded = false
             if showErrors {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    var visibleModels: [CodexModel] {
+        availableModels.filter {
+            !$0.hidden && $0.id != "codex-auto-review"
+        }
+    }
+
+    var activeModelPolicy: ModelPolicy {
+        preferences.modelPolicy
+    }
+
+    var selectedModel: CodexModel? {
+        if let modelID = currentChoice.model,
+            let selected = visibleModels.first(where: {
+                $0.id == modelID || $0.model == modelID
+            })
+        {
+            return selected
+        }
+        return visibleModels.first(where: \.isDefault) ?? visibleModels.first
+    }
+
+    var reasoningOptions: [ReasoningEffortOption] {
+        selectedModel?.supportedReasoningEfforts ?? []
+    }
+
+    func selectLatestModelAndLowestEffort() {
+        guard !isBusy else {
+            return
+        }
+        preferences.modelPolicy = .latestLowest
+        resolveCurrentChoice()
+    }
+
+    func selectCodexDefaults() {
+        guard !isBusy else {
+            return
+        }
+        preferences.modelPolicy = .codexDefault
+        resolveCurrentChoice()
+    }
+
+    func selectModel(_ model: CodexModel) {
+        guard !isBusy else {
+            return
+        }
+        let supported = Set(
+            model.supportedReasoningEfforts.map(\.effort)
+        )
+        let effort =
+            currentChoice.reasoningEffort.flatMap {
+                supported.contains($0) ? $0 : nil
+            }
+            ?? ModelSelection.lowestEffort(
+                in: model.supportedReasoningEfforts
+            )
+            ?? model.defaultReasoningEffort
+
+        preferences.customModelID = model.id
+        preferences.customEffort = effort
+        preferences.modelPolicy = .custom
+        resolveCurrentChoice()
+    }
+
+    func selectReasoningEffort(_ effort: String) {
+        guard !isBusy,
+            let model = selectedModel,
+            model.supportedReasoningEfforts.contains(where: {
+                $0.effort == effort
+            })
+        else {
+            return
+        }
+        preferences.customModelID = model.id
+        preferences.customEffort = effort
+        preferences.modelPolicy = .custom
+        resolveCurrentChoice()
     }
 
     func resolveApproval(allow: Bool, forSession: Bool = false) {
@@ -385,6 +490,15 @@ final class ConversationController: ObservableObject {
         try FileManager.default.createDirectory(
             at: GlossletConstants.defaultWorkspaceURL,
             withIntermediateDirectories: true
+        )
+    }
+
+    private func resolveCurrentChoice() {
+        currentChoice = ModelSelection.resolve(
+            policy: preferences.modelPolicy,
+            models: availableModels,
+            customModelID: preferences.customModelID,
+            customEffort: preferences.customEffort
         )
     }
 

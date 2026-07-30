@@ -12,9 +12,12 @@
   --link: #315f84;
   --mark: #1b1c1e;
   --mark-aperture: #f7f7f4;
+  --assistant-rail: 20px;
+  --assistant-gap: 10px;
+  --content-gutter: 16px;
   font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Helvetica Neue", sans-serif;
   font-synthesis: none;
 }
 
@@ -51,6 +54,7 @@ body {
 body {
   color: var(--ink);
   font-size: 13.5px;
+  line-height: 1.58;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -61,14 +65,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 #transcript {
   width: min(100%, 760px);
   min-height: 100%;
   margin: 0 auto;
-  padding: 18px 18px 24px;
+  padding: 20px var(--content-gutter) 28px;
 }
 
 .renderer-loading {
@@ -82,7 +85,7 @@ body {
 }
 
 .selection-card {
-  margin: 0 0 22px 28px;
+  margin: 0 0 24px calc(var(--assistant-rail) + var(--assistant-gap));
   padding: 11px 13px 12px;
   border: 1px solid var(--soft-line);
   border-radius: 13px;
@@ -100,8 +103,13 @@ body {
 .selection-card blockquote {
   display: -webkit-box;
   margin: 0;
+  padding: 0 0 0 10px;
   overflow: hidden;
+  border: 0;
+  border-left: 2px solid var(--line);
+  border-radius: 0;
   color: var(--secondary);
+  background: transparent;
   font-size: 12.25px;
   line-height: 1.48;
   -webkit-box-orient: vertical;
@@ -110,21 +118,21 @@ body {
 
 .message {
   position: relative;
-  margin: 0 0 22px;
+  margin: 0 0 24px;
 }
 
 .message.assistant {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: var(--assistant-rail) minmax(0, 1fr);
+  gap: var(--assistant-gap);
   align-items: start;
 }
 
 .assistant-mark {
   position: sticky;
   top: 12px;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   margin-top: 2px;
   border-radius: 6px;
   background: var(--mark);
@@ -132,7 +140,7 @@ body {
 
 .assistant-mark::after {
   position: absolute;
-  inset: 6px;
+  inset: 7px;
   background: var(--mark-aperture);
   content: "";
   clip-path: polygon(50% 0, 67% 33%, 100% 50%, 67% 67%, 50% 100%, 33% 67%, 0 50%, 33% 33%);
@@ -141,7 +149,9 @@ body {
 .message.user {
   display: flex;
   justify-content: flex-end;
-  padding-left: 48px;
+  padding-left: calc(
+    var(--assistant-rail) + var(--assistant-gap) + 24px
+  );
 }
 
 .message.user .message-body {
@@ -155,7 +165,6 @@ body {
 
 .message-body {
   min-width: 0;
-  line-height: 1.58;
   overflow-wrap: anywhere;
 }
 
@@ -189,8 +198,6 @@ h1 {
 }
 
 h2 {
-  padding-bottom: 0.25em;
-  border-bottom: 1px solid var(--soft-line);
   font-size: 1.27em;
 }
 
@@ -495,12 +502,11 @@ td:last-child {
 
 @media (max-width: 430px) {
   #transcript {
-    padding-right: 14px;
-    padding-left: 14px;
+    --content-gutter: 14px;
   }
 
   .selection-card {
-    margin-left: 28px;
+    margin-left: calc(var(--assistant-rail) + var(--assistant-gap));
   }
 
   .message.user {

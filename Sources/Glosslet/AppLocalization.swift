@@ -54,12 +54,16 @@ enum L10n {
         "打开辅助功能设置"
     )
     static let accessGranted = text("Access granted", "权限已授予")
+    static let accessibilityRepairHint = text(
+        "Already enabled after an update? Turn Glosslet off and on again. If it is still not recognized, remove the old entry and add the current app.",
+        "更新后开关已经开启但仍未识别？请先关闭再重新开启 Glosslet；如果仍无效，请移除旧条目后重新添加当前应用。"
+    )
     static let getStarted = text("Start using Glosslet", "开始使用 Glosslet")
     static let selectedFrom = text("Selected from", "选自")
     static let askFollowUp = text("Ask a follow-up…", "继续追问…")
     static let returnHint = text(
-        "Return to send · Shift-Return for a new line",
-        "回车发送 · Shift-回车换行"
+        "↵ Send · ⇧↵ New line",
+        "↵ 发送 · ⇧↵ 换行"
     )
     static let send = text("Send", "发送")
     static let stop = text("Stop", "停止")
@@ -92,6 +96,12 @@ enum L10n {
         "每次解释新建一个任务"
     )
     static let modelMode = text("Model", "模型")
+    static let chooseModel = text("Choose model", "选择模型")
+    static let reasoning = text("Reasoning", "推理强度")
+    static let chooseReasoning = text(
+        "Choose reasoning effort",
+        "选择推理强度"
+    )
     static let latestLowest = text(
         "Latest model · lowest reasoning",
         "最新模型 · 最低推理"
@@ -120,4 +130,54 @@ enum L10n {
         "Glosslet is an open-source, unofficial companion for Codex.",
         "Glosslet 是一个开源、非官方的 Codex 辅助工具。"
     )
+
+    static func reasoningLabel(_ effort: String) -> String {
+        switch effort {
+        case "none":
+            return text("None", "无")
+        case "minimal":
+            return text("Minimal", "最小")
+        case "low":
+            return text("Low", "低")
+        case "medium":
+            return text("Medium", "中")
+        case "high":
+            return text("High", "高")
+        case "xhigh":
+            return text("Extra high", "超高")
+        case "max":
+            return text("Maximum", "最大")
+        case "ultra":
+            return text("Ultra", "极高")
+        default:
+            return effort.capitalized
+        }
+    }
+
+    static func reasoningDescription(
+        _ effort: String,
+        fallback: String
+    ) -> String {
+        guard AppLanguage.isSimplifiedChinese else {
+            return fallback
+        }
+        switch effort {
+        case "none":
+            return "不进行额外推理"
+        case "minimal":
+            return "最短思考时间"
+        case "low":
+            return "轻量推理，响应更快"
+        case "medium":
+            return "速度与思考深度平衡"
+        case "high":
+            return "更深入地分析问题"
+        case "xhigh":
+            return "更充分的深度推理"
+        case "max", "ultra":
+            return "使用最高可用推理强度"
+        default:
+            return fallback
+        }
+    }
 }

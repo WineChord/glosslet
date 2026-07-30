@@ -71,6 +71,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
 
     func showToolbar(for selection: SelectionSnapshot) {
         currentSelection = selection
+        let anchor = selection.anchorBounds
         let panel = toolbarPanel ?? makeToolbarPanel()
         let view = SelectionToolbarView(
             onExplain: { [weak self] in
@@ -87,11 +88,11 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             ?? CGSize(width: 176, height: 44)
         let visibleFrame =
             screen(
-                containing: selection.bounds
+                containing: anchor
             )?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         panel.setFrame(
             PanelPlacement.toolbarFrame(
-                anchor: selection.bounds,
+                anchor: anchor,
                 panelSize: size,
                 visibleFrame: visibleFrame
             ),
@@ -113,7 +114,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
                 screen(
                     containing: anchor
                 )?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            let size = CGSize(width: 470, height: 640)
+            let size = CGSize(width: 490, height: 660)
             panel.setFrame(
                 PanelPlacement.conversationFrame(
                     anchor: anchor,
@@ -174,30 +175,13 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         stopOutsideClickMonitoring()
     }
 
-    func windowDidResignKey(_ notification: Notification) {
-        guard notification.object as? NSWindow === conversationPanel,
-            !presentation.isPinned
-        else {
-            return
-        }
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                self.conversationPanel?.isKeyWindow == false,
-                !self.presentation.isPinned
-            else {
-                return
-            }
-            self.hideConversation()
-        }
-    }
-
     private func explainCurrentSelection() {
         guard let selection = currentSelection else {
             return
         }
         toolbarPanel?.orderOut(nil)
         conversation.explain(selection)
-        showConversation(anchor: selection.bounds)
+        showConversation(anchor: selection.anchorBounds)
         currentSelection = nil
     }
 
@@ -237,7 +221,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
 
     private func makeConversationPanel() -> ConversationPanel {
         let panel = ConversationPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 490, height: 660),
             styleMask: [
                 .titled,
                 .closable,
@@ -253,7 +237,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
         panel.isReleasedWhenClosed = false
-        panel.minSize = NSSize(width: 410, height: 460)
+        panel.minSize = NSSize(width: 430, height: 500)
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
@@ -282,7 +266,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         guard let panel = conversationPanel else {
             return
         }
-        panel.hidesOnDeactivate = !presentation.isPinned
+        panel.hidesOnDeactivate = false
 
         if presentation.isPinned {
             stopOutsideClickMonitoring()
@@ -308,7 +292,9 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.dismissConversationWhenUnpinned()
+                self?.dismissConversationWhenUnpinned(
+                    clickLocation: NSEvent.mouseLocation
+                )
             }
         }
 
@@ -383,8 +369,16 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         }
     }
 
-    private func dismissConversationWhenUnpinned() {
+    private func dismissConversationWhenUnpinned(
+        clickLocation: CGPoint? = nil
+    ) {
         guard !presentation.isPinned else {
+            return
+        }
+        if let clickLocation,
+            let panel = conversationPanel,
+            panel.frame.contains(clickLocation)
+        {
             return
         }
         hideConversation()

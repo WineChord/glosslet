@@ -37,7 +37,20 @@ final class SelectionMonitor {
                 else {
                     return
                 }
-                self?.scheduleProbe()
+                let mouseLocation = NSEvent.mouseLocation
+                if event.type == .leftMouseUp,
+                    NSApp.windows.contains(where: {
+                        $0.isVisible && $0.frame.contains(mouseLocation)
+                    })
+                {
+                    return
+                }
+                self?.scheduleProbe(
+                    anchorHint:
+                        event.type == .leftMouseUp
+                        ? mouseLocation
+                        : nil
+                )
             }
         }
 
@@ -63,7 +76,7 @@ final class SelectionMonitor {
         let timer = Timer(timeInterval: 0.45, repeats: true) {
             [weak self] _ in
             Task { @MainActor in
-                self?.probe(clearWhenEmpty: false)
+                self?.probe(clearWhenEmpty: false, anchorHint: nil)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -89,13 +102,16 @@ final class SelectionMonitor {
     }
 
     func probeNow() {
-        probe(clearWhenEmpty: true)
+        probe(clearWhenEmpty: true, anchorHint: nil)
     }
 
-    private func scheduleProbe() {
+    private func scheduleProbe(anchorHint: CGPoint?) {
         pendingProbe?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.probe(clearWhenEmpty: true)
+            self?.probe(
+                clearWhenEmpty: true,
+                anchorHint: anchorHint
+            )
         }
         pendingProbe = work
         DispatchQueue.main.asyncAfter(
@@ -104,21 +120,28 @@ final class SelectionMonitor {
         )
     }
 
-    private func probe(clearWhenEmpty: Bool) {
+    private func probe(
+        clearWhenEmpty: Bool,
+        anchorHint: CGPoint?
+    ) {
         if NSWorkspace.shared.frontmostApplication?.processIdentifier
             == ProcessInfo.processInfo.processIdentifier
         {
             return
         }
-        let selection = reader.currentSelection()
+        let selection = reader.currentSelection(anchorHint: anchorHint)
         guard let selection else {
             if clearWhenEmpty {
                 clear()
             }
             return
         }
-        guard lastSelection?.representsSameSelection(as: selection) != true
-        else {
+        let sameSelection =
+            lastSelection?.representsSameSelection(as: selection) == true
+        let anchorChanged =
+            lastSelection?.anchorBounds.integral
+            != selection.anchorBounds.integral
+        guard !sameSelection || (anchorHint != nil && anchorChanged) else {
             return
         }
         lastSelection = selection

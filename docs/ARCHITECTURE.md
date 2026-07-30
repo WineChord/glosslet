@@ -18,8 +18,12 @@ flowchart LR
 
 `SelectionMonitor` observes global mouse-up and selection-related keyboard
 events. `AccessibilitySelectionReader` asks the focused accessibility element
-for `AXSelectedText`, its selected range, and the range bounds. Secure text
-fields and Glosslet's own process are ignored.
+for `AXSelectedText`, its selected range, the full range bounds, and the
+trailing insertion-point or final-character bounds. A mouse selection uses the
+actual mouse-up location as the toolbar anchor. This keeps the toolbar beside
+the selection endpoint even for long, multiline selections. Zero-sized or
+invalid Accessibility geometry is rejected before screen-safe fallback
+placement. Secure text fields and Glosslet's own process are ignored.
 
 The Accessibility coordinate system is converted per display before the panel
 is positioned. Both panels are available across Spaces and full-screen apps.
@@ -43,6 +47,11 @@ The panel starts unpinned. A global outside-click monitor and app-activation
 observer hide it when focus moves elsewhere, while the Codex turn continues in
 the background. Pinning disables those dismissal observers and keeps the panel
 above other apps until it is unpinned or closed.
+
+Model and reasoning-effort controls live in the native header. They update the
+same persisted model policy used by Settings, and each option comes from the
+current Codex App Server model catalog. The controls are locked while a turn is
+running so the visible configuration always matches the active request.
 
 ## Codex transport
 

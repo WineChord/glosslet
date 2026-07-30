@@ -14,7 +14,22 @@ struct AccessibilitySelectionReader {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    func currentSelection() -> SelectionSnapshot? {
+    static func openAccessibilitySettings() {
+        requestTrustPrompt()
+        guard
+            let url = URL(
+                string:
+                    "x-apple.systempreferences:"
+                    + "com.apple.preference.security"
+                    + "?Privacy_Accessibility"
+            )
+        else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    func currentSelection(anchorHint: CGPoint? = nil) -> SelectionSnapshot? {
         guard Self.isTrusted else {
             return nil
         }
@@ -83,10 +98,25 @@ struct AccessibilitySelectionReader {
         let applicationName =
             runningApplication?.localizedName
             ?? L10n.text("Unknown app", "未知应用")
-        let bounds =
-            selectionBounds(
-                for: focusedElement
-            ) ?? fallbackBounds()
+        let selectedRange = selectedTextRange(for: focusedElement)
+        let selectionBounds =
+            selectedRange
+            .flatMap { bounds(for: $0, in: focusedElement) }
+            .map(convertAXBoundsToAppKit)
+        let selectionEndBounds =
+            selectedRange
+            .flatMap { trailingBounds(for: $0, in: focusedElement) }
+            .map(convertAXBoundsToAppKit)
+        let pointerBounds =
+            anchorHint
+            .flatMap(pointerAnchorBounds)
+        let anchorBounds =
+            pointerBounds
+            ?? selectionEndBounds
+            ?? selectionBounds
+            ?? pointerAnchorBounds(for: NSEvent.mouseLocation)
+            ?? .zero
+        let resolvedSelectionBounds = selectionBounds ?? anchorBounds
 
         return SelectionSnapshot(
             text: selectedText,
@@ -94,7 +124,8 @@ struct AccessibilitySelectionReader {
             sourceBundleIdentifier:
                 runningApplication?.bundleIdentifier,
             sourceProcessIdentifier: processIdentifier,
-            bounds: convertAXBoundsToAppKit(bounds)
+            bounds: resolvedSelectionBounds,
+            anchorBounds: anchorBounds
         )
     }
 
@@ -124,7 +155,7 @@ struct AccessibilitySelectionReader {
         return subrole == "AXSecureTextField"
     }
 
-    private func selectionBounds(for element: AXUIElement) -> CGRect? {
+    private func selectedTextRange(for element: AXUIElement) -> CFRange? {
         guard
             let rangeValueReference = attribute(
                 kAXSelectedTextRangeAttribute,
@@ -154,7 +185,20 @@ struct AccessibilitySelectionReader {
         else {
             return nil
         }
+        guard range.location != kCFNotFound, range.length > 0 else {
+            return nil
+        }
+        return range
+    }
 
+    private func bounds(
+        for range: CFRange,
+        in element: AXUIElement
+    ) -> CGRect? {
+        var mutableRange = range
+        guard let rangeValue = AXValueCreate(.cfRange, &mutableRange) else {
+            return nil
+        }
         var boundsValue: CFTypeRef?
         guard
             AXUIElementCopyParameterizedAttributeValue(
@@ -181,22 +225,53 @@ struct AccessibilitySelectionReader {
                 boundsAXValue,
                 .cgRect,
                 &bounds
-            ), !bounds.isNull, !bounds.isInfinite
+            ), isUsableAXBounds(bounds)
         else {
             return nil
         }
         return bounds
     }
 
-    private func fallbackBounds() -> CGRect {
-        let location = NSEvent.mouseLocation
-        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 0
-        return CGRect(
-            x: location.x,
-            y: primaryHeight - location.y,
-            width: 1,
-            height: 1
+    private func trailingBounds(
+        for selectedRange: CFRange,
+        in element: AXUIElement
+    ) -> CGRect? {
+        let insertionRange = CFRange(
+            location: selectedRange.location + selectedRange.length,
+            length: 0
         )
+        if let insertionBounds = bounds(for: insertionRange, in: element) {
+            return insertionBounds
+        }
+
+        let finalCharacterRange = CFRange(
+            location: selectedRange.location + selectedRange.length - 1,
+            length: 1
+        )
+        return bounds(for: finalCharacterRange, in: element)
+    }
+
+    private func isUsableAXBounds(_ bounds: CGRect) -> Bool {
+        !bounds.isNull
+            && !bounds.isInfinite
+            && bounds.origin.x.isFinite
+            && bounds.origin.y.isFinite
+            && bounds.width.isFinite
+            && bounds.height.isFinite
+            && bounds.height > 0
+    }
+
+    private func pointerAnchorBounds(for point: CGPoint) -> CGRect? {
+        guard
+            point.x.isFinite,
+            point.y.isFinite,
+            NSScreen.screens.contains(where: {
+                $0.frame.insetBy(dx: -2, dy: -2).contains(point)
+            })
+        else {
+            return nil
+        }
+        return CGRect(x: point.x, y: point.y, width: 1, height: 1)
     }
 
     private func convertAXBoundsToAppKit(_ bounds: CGRect) -> CGRect {
