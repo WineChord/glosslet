@@ -6,6 +6,8 @@ public struct SelectionSnapshot: Equatable, Sendable {
     public let sourceApplicationName: String
     public let sourceBundleIdentifier: String?
     public let sourceProcessIdentifier: Int32
+    public let sourceElementIdentifier: UInt?
+    public let selectionRange: NSRange?
     public let bounds: CGRect
     public let anchorBounds: CGRect
     public let capturedAt: Date
@@ -15,6 +17,8 @@ public struct SelectionSnapshot: Equatable, Sendable {
         sourceApplicationName: String,
         sourceBundleIdentifier: String?,
         sourceProcessIdentifier: Int32,
+        sourceElementIdentifier: UInt? = nil,
+        selectionRange: NSRange? = nil,
         bounds: CGRect,
         anchorBounds: CGRect? = nil,
         capturedAt: Date = Date()
@@ -23,6 +27,8 @@ public struct SelectionSnapshot: Equatable, Sendable {
         self.sourceApplicationName = sourceApplicationName
         self.sourceBundleIdentifier = sourceBundleIdentifier
         self.sourceProcessIdentifier = sourceProcessIdentifier
+        self.sourceElementIdentifier = sourceElementIdentifier
+        self.selectionRange = selectionRange
         self.bounds = bounds
         self.anchorBounds = anchorBounds ?? bounds
         self.capturedAt = capturedAt
@@ -53,9 +59,76 @@ public struct SelectionSnapshot: Equatable, Sendable {
     }
 
     public func representsSameSelection(as other: SelectionSnapshot) -> Bool {
-        text == other.text
-            && sourceProcessIdentifier == other.sourceProcessIdentifier
-            && bounds.integral == other.bounds.integral
+        guard
+            text == other.text,
+            sourceProcessIdentifier == other.sourceProcessIdentifier,
+            sourceElementIdentifier == other.sourceElementIdentifier
+        else {
+            return false
+        }
+        if let selectionRange, let otherRange = other.selectionRange {
+            return selectionRange == otherRange
+        }
+        return bounds.integral == other.bounds.integral
+    }
+
+    public func replacingAnchorBounds(_ anchorBounds: CGRect) -> Self {
+        Self(
+            text: text,
+            sourceApplicationName: sourceApplicationName,
+            sourceBundleIdentifier: sourceBundleIdentifier,
+            sourceProcessIdentifier: sourceProcessIdentifier,
+            sourceElementIdentifier: sourceElementIdentifier,
+            selectionRange: selectionRange,
+            bounds: bounds,
+            anchorBounds: anchorBounds,
+            capturedAt: capturedAt
+        )
+    }
+}
+
+public struct SelectionAnchorTracker: Sendable {
+    private var lastSelection: SelectionSnapshot?
+
+    public init() {}
+
+    public mutating func observe(
+        _ candidate: SelectionSnapshot,
+        fallbackAnchor: CGRect
+    ) -> SelectionSnapshot? {
+        guard
+            lastSelection?.representsSameSelection(as: candidate) != true
+        else {
+            return nil
+        }
+
+        let anchor: CGRect
+        if Self.isUsableAnchor(candidate.anchorBounds) {
+            anchor = candidate.anchorBounds
+        } else if Self.isUsableAnchor(candidate.bounds) {
+            anchor = candidate.bounds
+        } else {
+            anchor = fallbackAnchor
+        }
+
+        let resolved = candidate.replacingAnchorBounds(anchor)
+        lastSelection = resolved
+        return resolved
+    }
+
+    public mutating func clear() {
+        lastSelection = nil
+    }
+
+    private static func isUsableAnchor(_ bounds: CGRect) -> Bool {
+        !bounds.isNull
+            && !bounds.isInfinite
+            && bounds.origin.x.isFinite
+            && bounds.origin.y.isFinite
+            && bounds.width.isFinite
+            && bounds.height.isFinite
+            && bounds.width > 0
+            && bounds.height > 0
     }
 }
 

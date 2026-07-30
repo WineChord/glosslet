@@ -2,6 +2,15 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.2 — 2026-07-30
+
+- Latched the toolbar anchor when a selection is first observed so passive
+  polling and later pointer movement cannot reposition it.
+- Kept selection identity stable when an app exposes text and range geometry
+  at different times.
+- Prevented later mouse-up events on an unchanged selection from replacing its
+  original placement anchor.
+
 ## 0.2.1 — 2026-07-30
 
 - Anchored the selection toolbar to the mouse-selection endpoint or

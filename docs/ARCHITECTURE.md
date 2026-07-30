@@ -23,7 +23,10 @@ trailing insertion-point or final-character bounds. A mouse selection uses the
 actual mouse-up location as the toolbar anchor. This keeps the toolbar beside
 the selection endpoint even for long, multiline selections. Zero-sized or
 invalid Accessibility geometry is rejected before screen-safe fallback
-placement. Secure text fields and Glosslet's own process are ignored.
+placement. `SelectionAnchorTracker` latches that resolved anchor for the
+selection's text range; passive polling can detect a different selection but
+cannot reposition the existing toolbar as the pointer moves or range geometry
+arrives later. Secure text fields and Glosslet's own process are ignored.
 
 The Accessibility coordinate system is converted per display before the panel
 is positioned. Both panels are available across Spaces and full-screen apps.

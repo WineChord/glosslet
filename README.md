@@ -41,7 +41,7 @@ either place. Glosslet never uses hidden or ephemeral threads.
   expose selected text through Accessibility.
 - The selection toolbar contains exactly two actions: **Explain** and **Copy**.
 - Places that toolbar at the selection endpoint instead of the center of a
-  long or multiline selection.
+  long or multiline selection, then keeps it fixed until the selection changes.
 - Streams Codex responses into a polished, resizable floating conversation.
 - Renders headings, lists, task lists, tables, quotations, links, highlighted
   code, inline math, and display LaTeX using a fully local renderer.
@@ -125,6 +125,7 @@ See [Architecture](docs/ARCHITECTURE.md) for the protocol flow.
 Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅助功能选区的
 应用里划词、划句或划段落，旁边就会出现只有“解释”和“复制”两个按钮的工具条。
 工具条会跟随划词结束时的鼠标或插入光标，不再停在整段选区的中心或屏幕角落。
+工具条出现后会固定在该选区旁边，只有重新选择文本时才会移动。
 
 点击“解释”后，Glosslet 会在悬浮小窗里流式显示 Codex 回复，并支持直接追问。
 所有会话都是可持久化的原生 Codex 任务：你可以在自己的 Codex App 中找到它们，
