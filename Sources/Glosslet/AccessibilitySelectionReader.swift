@@ -114,9 +114,8 @@ struct AccessibilitySelectionReader {
             pointerBounds
             ?? selectionEndBounds
             ?? selectionBounds
-            ?? pointerAnchorBounds(for: NSEvent.mouseLocation)
             ?? .zero
-        let resolvedSelectionBounds = selectionBounds ?? anchorBounds
+        let resolvedSelectionBounds = selectionBounds ?? .zero
 
         return SelectionSnapshot(
             text: selectedText,
@@ -124,6 +123,10 @@ struct AccessibilitySelectionReader {
             sourceBundleIdentifier:
                 runningApplication?.bundleIdentifier,
             sourceProcessIdentifier: processIdentifier,
+            sourceElementIdentifier: CFHash(focusedElement),
+            selectionRange: selectedRange.map {
+                NSRange(location: $0.location, length: $0.length)
+            },
             bounds: resolvedSelectionBounds,
             anchorBounds: anchorBounds
         )

@@ -11,7 +11,7 @@ final class SelectionMonitor {
     private var applicationObserver: NSObjectProtocol?
     private var pollingTimer: Timer?
     private var pendingProbe: DispatchWorkItem?
-    private var lastSelection: SelectionSnapshot?
+    private var anchorTracker = SelectionAnchorTracker()
 
     init(
         reader: AccessibilitySelectionReader =
@@ -30,27 +30,26 @@ final class SelectionMonitor {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseUp, .keyUp]
         ) { [weak self] event in
+            let eventType = event.type
+            let anchorHint =
+                eventType == .leftMouseUp
+                ? NSEvent.mouseLocation
+                : nil
             Task { @MainActor in
                 guard
-                    event.type == .leftMouseUp
+                    eventType == .leftMouseUp
                         || Self.isSelectionKey(event)
                 else {
                     return
                 }
-                let mouseLocation = NSEvent.mouseLocation
-                if event.type == .leftMouseUp,
+                if let anchorHint,
                     NSApp.windows.contains(where: {
-                        $0.isVisible && $0.frame.contains(mouseLocation)
+                        $0.isVisible && $0.frame.contains(anchorHint)
                     })
                 {
                     return
                 }
-                self?.scheduleProbe(
-                    anchorHint:
-                        event.type == .leftMouseUp
-                        ? mouseLocation
-                        : nil
-                )
+                self?.scheduleProbe(anchorHint: anchorHint)
             }
         }
 
@@ -136,20 +135,26 @@ final class SelectionMonitor {
             }
             return
         }
-        let sameSelection =
-            lastSelection?.representsSameSelection(as: selection) == true
-        let anchorChanged =
-            lastSelection?.anchorBounds.integral
-            != selection.anchorBounds.integral
-        guard !sameSelection || (anchorHint != nil && anchorChanged) else {
+        let fallbackPoint = anchorHint ?? NSEvent.mouseLocation
+        let fallbackAnchor = CGRect(
+            x: fallbackPoint.x,
+            y: fallbackPoint.y,
+            width: 1,
+            height: 1
+        )
+        guard
+            let stableSelection = anchorTracker.observe(
+                selection,
+                fallbackAnchor: fallbackAnchor
+            )
+        else {
             return
         }
-        lastSelection = selection
-        handler(selection)
+        handler(stableSelection)
     }
 
     private func clear() {
-        lastSelection = nil
+        anchorTracker.clear()
         handler(nil)
     }
 

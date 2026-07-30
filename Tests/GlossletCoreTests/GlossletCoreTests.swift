@@ -190,6 +190,133 @@ final class GlossletCoreTests: XCTestCase {
         XCTAssertEqual(frame.minY, cursorBounds.maxY + 8, accuracy: 0.001)
     }
 
+    func testSelectionAnchorTrackerIgnoresPointerMovement() {
+        var tracker = SelectionAnchorTracker()
+        let candidate = SelectionSnapshot(
+            text: "stable selection",
+            sourceApplicationName: "Reader",
+            sourceBundleIdentifier: "example.reader",
+            sourceProcessIdentifier: 17,
+            bounds: .zero,
+            anchorBounds: .zero
+        )
+        let initialAnchor = CGRect(x: 220, y: 180, width: 1, height: 1)
+        let movedPointer = CGRect(x: 780, y: 520, width: 1, height: 1)
+
+        let first = tracker.observe(
+            candidate,
+            fallbackAnchor: initialAnchor
+        )
+        let passivePoll = tracker.observe(
+            candidate,
+            fallbackAnchor: movedPointer
+        )
+
+        XCTAssertEqual(first?.anchorBounds, initialAnchor)
+        XCTAssertNil(passivePoll)
+    }
+
+    func testSelectionAnchorTrackerIgnoresLateGeometryForSameRange() {
+        var tracker = SelectionAnchorTracker()
+        let range = NSRange(location: 12, length: 9)
+        let first = SelectionSnapshot(
+            text: "selection",
+            sourceApplicationName: "Reader",
+            sourceBundleIdentifier: "example.reader",
+            sourceProcessIdentifier: 17,
+            selectionRange: range,
+            bounds: .zero,
+            anchorBounds: CGRect(x: 310, y: 220, width: 1, height: 1)
+        )
+        let lateGeometry = SelectionSnapshot(
+            text: first.text,
+            sourceApplicationName: first.sourceApplicationName,
+            sourceBundleIdentifier: first.sourceBundleIdentifier,
+            sourceProcessIdentifier: first.sourceProcessIdentifier,
+            selectionRange: range,
+            bounds: CGRect(x: 100, y: 180, width: 400, height: 60),
+            anchorBounds: CGRect(x: 490, y: 182, width: 1, height: 18)
+        )
+
+        XCTAssertNotNil(
+            tracker.observe(first, fallbackAnchor: first.anchorBounds)
+        )
+        XCTAssertNil(
+            tracker.observe(
+                lateGeometry,
+                fallbackAnchor: lateGeometry.anchorBounds
+            )
+        )
+    }
+
+    func testSelectionAnchorTrackerMovesForDifferentRange() {
+        var tracker = SelectionAnchorTracker()
+        let first = SelectionSnapshot(
+            text: "same word",
+            sourceApplicationName: "Reader",
+            sourceBundleIdentifier: "example.reader",
+            sourceProcessIdentifier: 17,
+            selectionRange: NSRange(location: 5, length: 9),
+            bounds: .zero,
+            anchorBounds: .zero
+        )
+        let second = SelectionSnapshot(
+            text: first.text,
+            sourceApplicationName: first.sourceApplicationName,
+            sourceBundleIdentifier: first.sourceBundleIdentifier,
+            sourceProcessIdentifier: first.sourceProcessIdentifier,
+            selectionRange: NSRange(location: 30, length: 9),
+            bounds: .zero,
+            anchorBounds: .zero
+        )
+        let firstAnchor = CGRect(x: 180, y: 140, width: 1, height: 1)
+        let secondAnchor = CGRect(x: 620, y: 420, width: 1, height: 1)
+
+        XCTAssertEqual(
+            tracker.observe(first, fallbackAnchor: firstAnchor)?.anchorBounds,
+            firstAnchor
+        )
+        XCTAssertEqual(
+            tracker.observe(second, fallbackAnchor: secondAnchor)?.anchorBounds,
+            secondAnchor
+        )
+    }
+
+    func testSelectionAnchorTrackerMovesForDifferentTextControl() {
+        var tracker = SelectionAnchorTracker()
+        let first = SelectionSnapshot(
+            text: "same word",
+            sourceApplicationName: "Reader",
+            sourceBundleIdentifier: "example.reader",
+            sourceProcessIdentifier: 17,
+            sourceElementIdentifier: 101,
+            selectionRange: NSRange(location: 0, length: 9),
+            bounds: .zero,
+            anchorBounds: .zero
+        )
+        let second = SelectionSnapshot(
+            text: first.text,
+            sourceApplicationName: first.sourceApplicationName,
+            sourceBundleIdentifier: first.sourceBundleIdentifier,
+            sourceProcessIdentifier: first.sourceProcessIdentifier,
+            sourceElementIdentifier: 202,
+            selectionRange: first.selectionRange,
+            bounds: .zero,
+            anchorBounds: .zero
+        )
+        let firstAnchor = CGRect(x: 180, y: 140, width: 1, height: 1)
+        let secondAnchor = CGRect(x: 620, y: 420, width: 1, height: 1)
+
+        XCTAssertEqual(
+            tracker.observe(first, fallbackAnchor: firstAnchor)?.anchorBounds,
+            firstAnchor
+        )
+        XCTAssertEqual(
+            tracker.observe(second, fallbackAnchor: secondAnchor)?.anchorBounds,
+            secondAnchor
+        )
+    }
+
     func testBinaryCandidateOrderPrefersStandaloneThenLocalThenPath() {
         let home = URL(fileURLWithPath: "/Users/test")
         let candidates = CodexBinaryLocator.candidatePaths(
