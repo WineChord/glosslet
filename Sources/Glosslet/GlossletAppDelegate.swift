@@ -37,8 +37,6 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         )
         configureStatusItem()
         bindPreferences()
-        selectionMonitor.start()
-        conversation.prepare()
 
         if isRenderingPreview {
             conversation.loadRenderingPreview()
@@ -51,10 +49,14 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                     height: 1
                 )
             )
-        } else if !preferences.completedOnboarding
-            || !AccessibilitySelectionReader.isTrusted
-        {
-            panels.showOnboarding()
+        } else {
+            selectionMonitor.start()
+            conversation.prepare()
+            if !preferences.completedOnboarding
+                || !AccessibilitySelectionReader.isTrusted
+            {
+                panels.showOnboarding()
+            }
         }
     }
 
@@ -174,7 +176,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     @objc private func requestAccessibility() {
-        AccessibilitySelectionReader.requestTrustPrompt()
+        AccessibilitySelectionReader.openAccessibilitySettings()
         panels.showOnboarding()
     }
 

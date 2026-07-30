@@ -40,6 +40,8 @@ either place. Glosslet never uses hidden or ephemeral threads.
 - Works across native apps, browsers, editors, and other macOS interfaces that
   expose selected text through Accessibility.
 - The selection toolbar contains exactly two actions: **Explain** and **Copy**.
+- Places that toolbar at the selection endpoint instead of the center of a
+  long or multiline selection.
 - Streams Codex responses into a polished, resizable floating conversation.
 - Renders headings, lists, task lists, tables, quotations, links, highlighted
   code, inline math, and display LaTeX using a fully local renderer.
@@ -52,8 +54,8 @@ either place. Glosslet never uses hidden or ephemeral threads.
 - Reuses one fixed Codex task by default, or creates a new task for every
   explanation.
 - Dynamically selects Codex's latest default model at its lowest advertised
-  reasoning effort. You can instead inherit Codex defaults or choose a model
-  and effort manually.
+  reasoning effort. Model and reasoning controls are available directly in the
+  floating conversation; you can also inherit Codex defaults.
 - Uses the installed Codex app server, sign-in, configuration, skills, MCP
   connections, sandbox, and approval policy.
 - Keeps **Copy** entirely local. Selected text is sent only after you click
@@ -87,7 +89,10 @@ open dist/Glosslet.app
 The local build is ad-hoc signed. On first launch, use Glosslet's onboarding to
 open **System Settings → Privacy & Security → Accessibility**, then enable
 Glosslet. Rebuilding changes an ad-hoc signature, so macOS may require local
-developers to remove and grant that permission again.
+developers to grant that permission again. System Settings can leave the old
+entry looking enabled even though it no longer matches the rebuilt app. Turn
+Glosslet off and on; if it is still not recognized, remove the old entry and
+add the current `dist/Glosslet.app`.
 
 Run the full local validation:
 
@@ -119,6 +124,7 @@ See [Architecture](docs/ARCHITECTURE.md) for the protocol flow.
 
 Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅助功能选区的
 应用里划词、划句或划段落，旁边就会出现只有“解释”和“复制”两个按钮的工具条。
+工具条会跟随划词结束时的鼠标或插入光标，不再停在整段选区的中心或屏幕角落。
 
 点击“解释”后，Glosslet 会在悬浮小窗里流式显示 Codex 回复，并支持直接追问。
 所有会话都是可持久化的原生 Codex 任务：你可以在自己的 Codex App 中找到它们，
@@ -128,7 +134,11 @@ Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅
 自动隐藏；需要边工作边查看时，可以点击标题栏中的固定按钮。
 
 默认配置会动态选择 Codex 当前最新的默认模型，并使用该模型支持的最低推理程度；
-也可以改为完全沿用 Codex 默认值，或手动选择模型与推理程度。
+悬浮窗顶部可以直接切换模型与推理强度，也可以改为完全沿用 Codex 默认值。
+
+本地重新构建会改变临时签名。如果系统设置中的 Glosslet 开关看似已开启，但应用
+仍未识别，请先关闭再重新开启；如果仍无效，请移除旧条目后重新添加当前的
+`dist/Glosslet.app`。
 
 ## Contributing
 

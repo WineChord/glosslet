@@ -8,6 +8,11 @@ struct SettingsView: View {
     @State private var launchError: String?
     @State private var accessibilityTrusted =
         AccessibilitySelectionReader.isTrusted
+    private let permissionTimer = Timer.publish(
+        every: 1,
+        on: .main,
+        in: .common
+    ).autoconnect()
 
     var body: some View {
         TabView {
@@ -30,6 +35,9 @@ struct SettingsView: View {
         .task {
             accessibilityTrusted = AccessibilitySelectionReader.isTrusted
             await conversation.refreshModels(showErrors: false)
+        }
+        .onReceive(permissionTimer) { _ in
+            accessibilityTrusted = AccessibilitySelectionReader.isTrusted
         }
     }
 
@@ -56,11 +64,19 @@ struct SettingsView: View {
                     .foregroundStyle(.green)
                 } else {
                     Button(L10n.grantAccess) {
-                        AccessibilitySelectionReader.requestTrustPrompt()
+                        AccessibilitySelectionReader
+                            .openAccessibilitySettings()
                         accessibilityTrusted =
                             AccessibilitySelectionReader.isTrusted
                     }
                 }
+            }
+
+            if !accessibilityTrusted {
+                Text(L10n.accessibilityRepairHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Picker(
@@ -300,12 +316,20 @@ struct OnboardingView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.green)
                 } else {
-                    Button(L10n.grantAccess) {
-                        AccessibilitySelectionReader.requestTrustPrompt()
-                        trusted = AccessibilitySelectionReader.isTrusted
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button(L10n.grantAccess) {
+                            AccessibilitySelectionReader
+                                .openAccessibilitySettings()
+                            trusted = AccessibilitySelectionReader.isTrusted
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+
+                        Text(L10n.accessibilityRepairHint)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                 }
             }
             .padding(18)

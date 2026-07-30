@@ -162,6 +162,34 @@ final class GlossletCoreTests: XCTestCase {
         XCTAssertLessThanOrEqual(frame.maxY, 112)
     }
 
+    func testSelectionSnapshotKeepsDedicatedPlacementAnchor() {
+        let selectionBounds = CGRect(x: 120, y: 200, width: 460, height: 90)
+        let cursorBounds = CGRect(x: 566, y: 202, width: 1, height: 18)
+        let snapshot = SelectionSnapshot(
+            text: "A multiline selection",
+            sourceApplicationName: "Reader",
+            sourceBundleIdentifier: "example.reader",
+            sourceProcessIdentifier: 11,
+            bounds: selectionBounds,
+            anchorBounds: cursorBounds
+        )
+
+        XCTAssertEqual(snapshot.bounds, selectionBounds)
+        XCTAssertEqual(snapshot.anchorBounds, cursorBounds)
+    }
+
+    func testToolbarPlacementTracksSelectionEndpoint() {
+        let cursorBounds = CGRect(x: 560, y: 200, width: 1, height: 18)
+        let frame = PanelPlacement.toolbarFrame(
+            anchor: cursorBounds,
+            panelSize: CGSize(width: 150, height: 38),
+            visibleFrame: CGRect(x: 0, y: 0, width: 900, height: 700)
+        )
+
+        XCTAssertEqual(frame.midX, cursorBounds.midX, accuracy: 0.001)
+        XCTAssertEqual(frame.minY, cursorBounds.maxY + 8, accuracy: 0.001)
+    }
+
     func testBinaryCandidateOrderPrefersStandaloneThenLocalThenPath() {
         let home = URL(fileURLWithPath: "/Users/test")
         let candidates = CodexBinaryLocator.candidatePaths(
