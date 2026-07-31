@@ -2,8 +2,14 @@
 
 All notable changes to Glosslet will be documented in this file.
 
-## 0.2.7 — 2026-07-31
+## 0.2.7 — 2026-08-01
 
+- Reuses the authenticated persistent Codex App Server control socket when it
+  is available, while retaining the standalone Codex executable as a fallback.
+- Checks the live Codex account before the first model request so authentication
+  failures are reported immediately instead of surfacing as a late `401`.
+- Made cross-app selection lookup more resilient to macOS focused-application
+  timing and added a privacy-safe selection diagnostic for troubleshooting.
 - Added a durable permission monitor shared by onboarding, Settings, the menu
   bar, and selection handling, so Accessibility changes are reflected without
   restarting Glosslet.

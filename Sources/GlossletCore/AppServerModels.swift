@@ -191,6 +191,7 @@ public enum AppServerEvent: Equatable, Sendable {
 
 public enum AppServerProtocolError: LocalizedError, Equatable {
     case codexBinaryNotFound
+    case codexNotAuthenticated
     case processUnavailable
     case requestTimedOut
     case responseMissingResult
@@ -201,6 +202,8 @@ public enum AppServerProtocolError: LocalizedError, Equatable {
         switch self {
         case .codexBinaryNotFound:
             return "The Codex executable could not be found."
+        case .codexNotAuthenticated:
+            return "Codex is not signed in. Open the Codex app, then try again."
         case .processUnavailable:
             return "The Codex app server is unavailable."
         case .requestTimedOut:

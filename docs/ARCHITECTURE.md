@@ -65,8 +65,15 @@ running so the visible configuration always matches the active request.
 
 ## Codex transport
 
-`CodexAppServerClient` launches the Codex executable already installed for the
-current user:
+`CodexAppServerClient` first looks for the owner-only Unix control socket at
+`$CODEX_HOME/app-server-control/app-server-control.sock`. When present, it
+performs the local WebSocket upgrade directly and attaches to that persistent
+App Server. This is the preferred path because it reuses the Codex app's live
+authentication bridge and loaded task state without reading or copying any
+credential.
+
+If the control socket is absent or unavailable, the client launches the Codex
+executable already installed for the current user:
 
 1. Codex standalone installation
 2. `~/.local/bin/codex`
@@ -74,22 +81,26 @@ current user:
 4. Codex desktop resources
 5. Homebrew locations
 
-`GLOSSLET_CODEX_PATH` can override discovery for development.
+`GLOSSLET_CODEX_PATH` can override executable discovery for development, while
+`CODEX_HOME` controls both Codex state and control-socket discovery.
 
-The client performs the app-server initialization handshake and exchanges
-newline-delimited JSON-RPC messages over standard input and output. Responses,
+The client performs the same App Server initialization and account preflight on
+both transports. Unix-socket messages use RFC 6455 text frames; child-process
+messages use newline-delimited JSON-RPC over standard input and output. An
+OpenAI-backed connection with no active account is rejected immediately instead
+of waiting for a model request to fail with `401 Unauthorized`. Responses,
 notifications, streamed agent-message deltas, turn lifecycle events, and
-approval requests are decoded into typed Swift values.
+approval requests are decoded into the same typed Swift values.
 
-An active task remains attached to the live app-server process across
-consecutive Glosslet turns. The transcript reports connection, history refresh,
-reasoning, and response-writing stages separately and derives elapsed time from
-the original request timestamp. Concurrent startup callers share one connection
+An active task remains attached to the live App Server across consecutive
+Glosslet turns. The transcript reports connection, history refresh, reasoning,
+and response-writing stages separately and derives elapsed time from the
+original request timestamp. Concurrent startup callers share one connection
 task so onboarding, model discovery, and an immediate selection cannot race
-multiple app-server processes. Launch preparation also restores the saved fixed
-task and asks app-server to populate its cached skill, hook, and MCP metadata.
-This moves deterministic environment discovery off the first visible request
-without sending a model turn.
+multiple connections or child processes. Launch preparation also restores the
+saved fixed task and asks App Server to populate its cached skill, hook, and MCP
+metadata. This moves deterministic environment discovery off the first visible
+request without sending a model turn.
 
 ## Persistent task invariant
 
@@ -102,10 +113,12 @@ starts a separate persistent task each time.
 Tasks use the same Codex home and authentication as the user's Codex app, so
 the Codex app can discover and continue them. The reverse direction works too:
 consecutive Glosslet requests reuse the already attached task, while activation
-of the Codex app marks that task as externally changed. Glosslet restarts the
-app-server and reloads the persistent task from disk before the next request
-only in that case. This preserves cross-process history without imposing a cold
-start on every explanation.
+of the Codex app marks that task as externally changed. Glosslet reconnects and
+resumes the persistent task before the next request only in that case. When the
+shared control socket is in use, both clients already observe the same live task
+state; with a child process, resuming reloads the durable history from disk.
+This preserves cross-surface history without imposing a cold start on every
+explanation.
 
 Codex remains responsible for context-window management, automatic compaction,
 and rollover. Glosslet does not choose a token threshold, schedule a background

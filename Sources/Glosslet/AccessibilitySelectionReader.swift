@@ -2,6 +2,21 @@ import AppKit
 import ApplicationServices
 import GlossletCore
 
+enum AccessibilitySelectionReadFailure: String {
+    case processNotTrusted
+    case focusedApplicationUnavailable
+    case glossletIsFocused
+    case focusedElementUnavailable
+    case secureTextField
+    case selectedTextUnavailable
+    case emptySelection
+}
+
+enum AccessibilitySelectionReadResult {
+    case selection(SelectionSnapshot)
+    case unavailable(AccessibilitySelectionReadFailure)
+}
+
 struct AccessibilitySelectionReader {
     private static let bundleIdentifier = "com.winechord.glosslet"
 
@@ -58,66 +73,145 @@ struct AccessibilitySelectionReader {
     }
 
     func currentSelection(anchorHint: CGPoint? = nil) -> SelectionSnapshot? {
+        switch readSelection(anchorHint: anchorHint) {
+        case .selection(let selection):
+            selection
+        case .unavailable:
+            nil
+        }
+    }
+
+    func readSelection(
+        anchorHint: CGPoint? = nil
+    ) -> AccessibilitySelectionReadResult {
         guard Self.isTrusted else {
-            return nil
+            return .unavailable(.processNotTrusted)
         }
 
-        let system = AXUIElementCreateSystemWide()
-        guard
-            let focusedApplicationValue = attribute(
-                kAXFocusedApplicationAttribute,
-                from: system
-            ),
-            CFGetTypeID(focusedApplicationValue) == AXUIElementGetTypeID()
-        else {
-            return nil
+        let focusedResult = focusedSelection(anchorHint: anchorHint)
+        if case .selection = focusedResult {
+            return focusedResult
         }
-        let focusedApplication = unsafeBitCast(
-            focusedApplicationValue,
-            to: AXUIElement.self
+        if case .unavailable(.secureTextField) = focusedResult {
+            return focusedResult
+        }
+
+        guard let anchorHint else {
+            return focusedResult
+        }
+        let pointerResult = pointerSelection(
+            at: anchorHint,
+            anchorHint: anchorHint
         )
-
-        var processIdentifier: pid_t = 0
-        guard
-            AXUIElementGetPid(
-                focusedApplication,
-                &processIdentifier
-            ) == .success,
-            processIdentifier != ProcessInfo.processInfo.processIdentifier
-        else {
-            return nil
+        if case .selection = pointerResult {
+            return pointerResult
         }
+        if case .unavailable(.secureTextField) = pointerResult {
+            return pointerResult
+        }
+        return focusedResult
+    }
 
+    func readSelection(
+        in processIdentifier: pid_t,
+        anchorHint: CGPoint? = nil
+    ) -> AccessibilitySelectionReadResult {
+        guard Self.isTrusted else {
+            return .unavailable(.processNotTrusted)
+        }
+        guard processIdentifier > 0 else {
+            return .unavailable(.focusedApplicationUnavailable)
+        }
+        guard processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else {
+            return .unavailable(.glossletIsFocused)
+        }
+        let application = AXUIElementCreateApplication(processIdentifier)
         guard
             let focusedElementValue = attribute(
                 kAXFocusedUIElementAttribute,
-                from: focusedApplication
+                from: application
             ),
             CFGetTypeID(focusedElementValue) == AXUIElementGetTypeID()
         else {
-            return nil
+            return .unavailable(.focusedElementUnavailable)
         }
         let focusedElement = unsafeBitCast(
             focusedElementValue,
             to: AXUIElement.self
         )
-        guard !isSecure(element: focusedElement) else {
-            return nil
+        return selection(
+            from: focusedElement,
+            processIdentifier: processIdentifier,
+            anchorHint: anchorHint
+        )
+    }
+
+    private func focusedSelection(
+        anchorHint: CGPoint?
+    ) -> AccessibilitySelectionReadResult {
+        guard let focusedApplication = focusedApplication() else {
+            return .unavailable(.focusedApplicationUnavailable)
+        }
+        guard
+            let processIdentifier = processIdentifier(
+                for: focusedApplication
+            )
+        else {
+            return .unavailable(.focusedApplicationUnavailable)
+        }
+        guard processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else {
+            return .unavailable(.glossletIsFocused)
+        }
+        return readSelection(
+            in: processIdentifier,
+            anchorHint: anchorHint
+        )
+    }
+
+    private func pointerSelection(
+        at appKitPoint: CGPoint,
+        anchorHint: CGPoint?
+    ) -> AccessibilitySelectionReadResult {
+        guard let element = element(at: appKitPoint) else {
+            return .unavailable(.focusedElementUnavailable)
+        }
+        guard let processIdentifier = processIdentifier(for: element) else {
+            return .unavailable(.focusedElementUnavailable)
+        }
+        guard processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else {
+            return .unavailable(.glossletIsFocused)
+        }
+        return selection(
+            from: element,
+            processIdentifier: processIdentifier,
+            anchorHint: anchorHint ?? appKitPoint
+        )
+    }
+
+    private func selection(
+        from element: AXUIElement,
+        processIdentifier: pid_t,
+        anchorHint: CGPoint?
+    ) -> AccessibilitySelectionReadResult {
+        guard !isSecure(element: element) else {
+            return .unavailable(.secureTextField)
         }
         guard
             let selectedText = attribute(
                 kAXSelectedTextAttribute,
-                from: focusedElement
+                from: element
             ) as? String
         else {
-            return nil
+            return .unavailable(.selectedTextUnavailable)
         }
-
         let trimmed = selectedText.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
         guard !trimmed.isEmpty else {
-            return nil
+            return .unavailable(.emptySelection)
         }
 
         let runningApplication = NSRunningApplication(
@@ -126,14 +220,14 @@ struct AccessibilitySelectionReader {
         let applicationName =
             runningApplication?.localizedName
             ?? L10n.text("Unknown app", "未知应用")
-        let selectedRange = selectedTextRange(for: focusedElement)
+        let selectedRange = selectedTextRange(for: element)
         let selectionBounds =
             selectedRange
-            .flatMap { bounds(for: $0, in: focusedElement) }
+            .flatMap { bounds(for: $0, in: element) }
             .map(convertAXBoundsToAppKit)
         let selectionEndBounds =
             selectedRange
-            .flatMap { trailingBounds(for: $0, in: focusedElement) }
+            .flatMap { trailingBounds(for: $0, in: element) }
             .map(convertAXBoundsToAppKit)
         let pointerBounds =
             anchorHint
@@ -145,19 +239,32 @@ struct AccessibilitySelectionReader {
             ?? .zero
         let resolvedSelectionBounds = selectionBounds ?? .zero
 
-        return SelectionSnapshot(
-            text: selectedText,
-            sourceApplicationName: applicationName,
-            sourceBundleIdentifier:
-                runningApplication?.bundleIdentifier,
-            sourceProcessIdentifier: processIdentifier,
-            sourceElementIdentifier: CFHash(focusedElement),
-            selectionRange: selectedRange.map {
-                NSRange(location: $0.location, length: $0.length)
-            },
-            bounds: resolvedSelectionBounds,
-            anchorBounds: anchorBounds
+        return .selection(
+            SelectionSnapshot(
+                text: selectedText,
+                sourceApplicationName: applicationName,
+                sourceBundleIdentifier:
+                    runningApplication?.bundleIdentifier,
+                sourceProcessIdentifier: processIdentifier,
+                sourceElementIdentifier: CFHash(element),
+                selectionRange: selectedRange.map {
+                    NSRange(location: $0.location, length: $0.length)
+                },
+                bounds: resolvedSelectionBounds,
+                anchorBounds: anchorBounds
+            )
         )
+    }
+
+    private func processIdentifier(for element: AXUIElement) -> pid_t? {
+        var processIdentifier: pid_t = 0
+        guard
+            AXUIElementGetPid(element, &processIdentifier) == .success,
+            processIdentifier > 0
+        else {
+            return nil
+        }
+        return processIdentifier
     }
 
     private func attribute(
@@ -175,6 +282,50 @@ struct AccessibilitySelectionReader {
             return nil
         }
         return value
+    }
+
+    private func focusedApplication() -> AXUIElement? {
+        if let frontmostApplication = NSWorkspace.shared.frontmostApplication,
+            frontmostApplication.processIdentifier > 0
+        {
+            return AXUIElementCreateApplication(
+                frontmostApplication.processIdentifier
+            )
+        }
+
+        let system = AXUIElementCreateSystemWide()
+        guard
+            let focusedApplicationValue = attribute(
+                kAXFocusedApplicationAttribute,
+                from: system
+            ),
+            CFGetTypeID(focusedApplicationValue) == AXUIElementGetTypeID()
+        else {
+            return nil
+        }
+        return unsafeBitCast(
+            focusedApplicationValue,
+            to: AXUIElement.self
+        )
+    }
+
+    private func element(at appKitPoint: CGPoint) -> AXUIElement? {
+        guard let axPoint = convertAppKitPointToAX(appKitPoint) else {
+            return nil
+        }
+        let system = AXUIElementCreateSystemWide()
+        var element: AXUIElement?
+        guard
+            AXUIElementCopyElementAtPosition(
+                system,
+                Float(axPoint.x),
+                Float(axPoint.y),
+                &element
+            ) == .success
+        else {
+            return nil
+        }
+        return element
     }
 
     private func isSecure(element: AXUIElement) -> Bool {
@@ -303,6 +454,28 @@ struct AccessibilitySelectionReader {
             return nil
         }
         return CGRect(x: point.x, y: point.y, width: 1, height: 1)
+    }
+
+    private func convertAppKitPointToAX(_ point: CGPoint) -> CGPoint? {
+        guard point.x.isFinite, point.y.isFinite else {
+            return nil
+        }
+        for screen in NSScreen.screens where screen.frame.contains(point) {
+            guard
+                let number = screen.deviceDescription[
+                    NSDeviceDescriptionKey("NSScreenNumber")
+                ] as? NSNumber
+            else {
+                continue
+            }
+            let displayID = CGDirectDisplayID(number.uint32Value)
+            let quartzFrame = CGDisplayBounds(displayID)
+            return CGPoint(
+                x: quartzFrame.minX + point.x - screen.frame.minX,
+                y: quartzFrame.minY + screen.frame.maxY - point.y
+            )
+        }
+        return nil
     }
 
     private func convertAXBoundsToAppKit(_ bounds: CGRect) -> CGRect {

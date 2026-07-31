@@ -419,6 +419,36 @@ final class GlossletCoreTests: XCTestCase {
         )
     }
 
+    func testControlSocketUsesConfiguredCodexHome() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        var checkedPath: String?
+        let socket = CodexBinaryLocator.findControlSocket(
+            environment: ["CODEX_HOME": "/custom/codex-home"],
+            homeDirectory: home,
+            socketAvailable: { path in
+                checkedPath = path
+                return true
+            }
+        )
+
+        XCTAssertEqual(
+            checkedPath,
+            "/custom/codex-home/app-server-control/"
+                + "app-server-control.sock"
+        )
+        XCTAssertEqual(socket?.path, checkedPath)
+    }
+
+    func testControlSocketIsIgnoredWhenUnavailable() {
+        let socket = CodexBinaryLocator.findControlSocket(
+            environment: [:],
+            homeDirectory: URL(fileURLWithPath: "/Users/test"),
+            socketAvailable: { _ in false }
+        )
+
+        XCTAssertNil(socket)
+    }
+
     private func model(
         id: String,
         displayName: String,

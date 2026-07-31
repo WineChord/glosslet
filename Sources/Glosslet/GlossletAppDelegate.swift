@@ -33,6 +33,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     private var statusItem: NSStatusItem?
     private var subscriptions = Set<AnyCancellable>()
+    private var isPreviewSession = false
 
     override init() {
         let arguments = ProcessInfo.processInfo.arguments
@@ -59,6 +60,9 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             arguments.contains(
                 "--render-onboarding-preview"
             ) || arguments.contains("--render-onboarding-ready-preview")
+        isPreviewSession =
+            isRenderingPreview || isThinkingPreview || isToolbarPreview
+            || isOnboardingPreview
         configureStatusItem()
         bindPreferences()
         permissionMonitor.start()
@@ -124,6 +128,9 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         _ sender: NSApplication,
         hasVisibleWindows _: Bool
     ) -> Bool {
+        guard !isPreviewSession else {
+            return false
+        }
         panels.showMainWindow()
         return true
     }

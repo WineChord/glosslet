@@ -24,7 +24,9 @@ public actor CodexAppServerClient {
     }
 
     private let binaryURLProvider: @Sendable () -> URL?
+    private let controlSocketURLProvider: @Sendable () -> URL?
     private var process: Process?
+    private var unixConnection: UnixWebSocketConnection?
     private var inputHandle: FileHandle?
     private var outputHandle: FileHandle?
     private var errorHandle: FileHandle?
@@ -41,9 +43,12 @@ public actor CodexAppServerClient {
 
     public init(
         binaryURLProvider: @escaping @Sendable () -> URL? =
-            { CodexBinaryLocator.findBinary() }
+            { CodexBinaryLocator.findBinary() },
+        controlSocketURLProvider: @escaping @Sendable () -> URL? =
+            { CodexBinaryLocator.findControlSocket() }
     ) {
         self.binaryURLProvider = binaryURLProvider
+        self.controlSocketURLProvider = controlSocketURLProvider
     }
 
     deinit {
@@ -51,6 +56,7 @@ public actor CodexAppServerClient {
         outputHandle?.readabilityHandler = nil
         errorHandle?.readabilityHandler = nil
         process?.terminate()
+        unixConnection?.close()
     }
 
     public func eventStream() -> AsyncStream<AppServerEvent> {
@@ -66,7 +72,7 @@ public actor CodexAppServerClient {
     }
 
     public func connect() async throws {
-        if process?.isRunning == true, initialized {
+        if transportIsAvailable, initialized {
             return
         }
 
@@ -92,11 +98,35 @@ public actor CodexAppServerClient {
     }
 
     private func establishConnection() async throws {
-        if process?.isRunning == true, initialized {
+        if transportIsAvailable, initialized {
             return
         }
 
-        try startProcess()
+        var socketError: Error?
+        if let controlSocketURL = controlSocketURLProvider() {
+            do {
+                try await startUnixConnection(at: controlSocketURL)
+                try await initializeConnection()
+                return
+            } catch {
+                socketError = error
+                shutdown()
+            }
+        }
+
+        do {
+            try startProcess()
+            try await initializeConnection()
+        } catch {
+            shutdown()
+            if binaryURLProvider() == nil, let socketError {
+                throw socketError
+            }
+            throw error
+        }
+    }
+
+    private func initializeConnection() async throws {
         let initializeResult = try await sendRequest(
             method: "initialize",
             params: .object([
@@ -119,6 +149,15 @@ public actor CodexAppServerClient {
             )
         }
         try sendNotification(method: "initialized", params: .object([:]))
+        let account = try await sendRequest(
+            method: "account/read",
+            params: .object(["refreshToken": .bool(false)])
+        )
+        if account["requiresOpenaiAuth"]?.boolValue == true,
+            account["account"]?.objectValue == nil
+        {
+            throw AppServerProtocolError.codexNotAuthenticated
+        }
         initialized = true
     }
 
@@ -255,8 +294,8 @@ public actor CodexAppServerClient {
         return resumedID
     }
 
-    /// Restarts the app-server process before resuming so turns added by
-    /// another Codex surface are loaded from the persistent task history.
+    /// Reconnects before resuming so turns added by another Codex surface are
+    /// loaded from the live server or persistent task history.
     @discardableResult
     public func reloadThreadFromDisk(
         id threadID: String,
@@ -366,17 +405,20 @@ public actor CodexAppServerClient {
 
     public func shutdown() {
         let activeProcess = process
+        let activeUnixConnection = unixConnection
         processGeneration += 1
         activeProcess?.terminationHandler = nil
         outputHandle?.readabilityHandler = nil
         errorHandle?.readabilityHandler = nil
 
         process = nil
+        unixConnection = nil
         inputHandle = nil
         outputHandle = nil
         errorHandle = nil
         initialized = false
         outputBuffer.removeAll(keepingCapacity: false)
+        standardErrorTail.removeAll(keepingCapacity: false)
 
         let waiting = pending.values
         pending.removeAll()
@@ -389,6 +431,42 @@ public actor CodexAppServerClient {
         if activeProcess?.isRunning == true {
             activeProcess?.terminate()
         }
+        activeUnixConnection?.close()
+    }
+
+    private var transportIsAvailable: Bool {
+        unixConnection != nil || process?.isRunning == true
+    }
+
+    private func startUnixConnection(at socketURL: URL) async throws {
+        shutdown()
+        processGeneration += 1
+        let generation = processGeneration
+        let connection = UnixWebSocketConnection(
+            socketPath: socketURL.path,
+            onText: { [weak self] data in
+                Task {
+                    await self?.handleSocketMessage(
+                        data,
+                        generation: generation
+                    )
+                }
+            },
+            onClose: { [weak self] error in
+                Task {
+                    await self?.handleSocketTermination(
+                        error,
+                        generation: generation
+                    )
+                }
+            }
+        )
+        try await connection.connect()
+        guard generation == processGeneration else {
+            connection.close()
+            throw AppServerProtocolError.processUnavailable
+        }
+        unixConnection = connection
     }
 
     private func startProcess() throws {
@@ -459,7 +537,7 @@ public actor CodexAppServerClient {
         method: String,
         params: JSONValue?
     ) async throws -> JSONValue {
-        guard process?.isRunning == true, inputHandle != nil else {
+        guard transportIsAvailable else {
             throw AppServerProtocolError.processUnavailable
         }
 
@@ -506,12 +584,41 @@ public actor CodexAppServerClient {
     }
 
     private func write<T: Encodable>(_ value: T) throws {
+        var data = try JSONEncoder().encode(value)
+        if let unixConnection {
+            try unixConnection.send(text: data)
+            return
+        }
         guard let inputHandle, process?.isRunning == true else {
             throw AppServerProtocolError.processUnavailable
         }
-        var data = try JSONEncoder().encode(value)
         data.append(0x0A)
         try inputHandle.write(contentsOf: data)
+    }
+
+    private func handleSocketMessage(_ data: Data, generation: Int) {
+        guard generation == processGeneration else {
+            return
+        }
+        handleLine(data)
+    }
+
+    private func handleSocketTermination(
+        _ error: Error?,
+        generation: Int
+    ) {
+        guard generation == processGeneration else {
+            return
+        }
+        if initialized {
+            emit(
+                .processTerminated(
+                    error?.localizedDescription
+                        ?? "The Codex control socket closed."
+                )
+            )
+        }
+        shutdown()
     }
 
     private func handleOutput(_ data: Data, generation: Int) {

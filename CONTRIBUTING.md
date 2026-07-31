@@ -39,6 +39,20 @@ The live waiting state has a deterministic preview as well:
 open -n dist/Glosslet.app --args --render-thinking-preview
 ```
 
+When diagnosing Accessibility behavior, a signed build that already has
+permission can report whether it sees the current selection without printing
+the selected text itself:
+
+```bash
+/Applications/Glosslet.app/Contents/MacOS/Glosslet --diagnose-selection
+/Applications/Glosslet.app/Contents/MacOS/Glosslet \
+  --diagnose-selection-app com.apple.TextEdit
+```
+
+The second form is useful when the terminal or debugger is the frontmost app.
+It reports only trust state, application name, character count, range, and
+anchor geometry.
+
 `scripts/build_app.sh` uses an ad-hoc signature by default. Release maintainers
 can set `GLOSSLET_CODESIGN_IDENTITY` to a Developer ID Application identity.
 Set `GLOSSLET_NOTARY_PROFILE` as well when `notarytool` credentials have been
