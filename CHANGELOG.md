@@ -2,6 +2,17 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.5 — 2026-07-31
+
+- Replaced the in-layout configuration drawer with a floating overlay so model
+  and reasoning menus no longer push or compress the conversation transcript.
+- Removed the competing move, opacity, content-morph, and header-size
+  animations in favor of one short scale-and-fade transition.
+- Swaps directly between model and reasoning content without cross-animating
+  different drawer heights, and rotates one stable chevron instead of replacing
+  symbols.
+- Added restrained press feedback and click-away dismissal inside the panel.
+
 ## 0.2.4 — 2026-07-31
 
 - Prewarmed the saved Codex task, skill catalog, hooks, and MCP metadata at app
