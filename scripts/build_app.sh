@@ -8,6 +8,18 @@ output_root="$repo_root/dist"
 app_path="$output_root/Glosslet.app"
 contents_path="$app_path/Contents"
 codesign_identity="${GLOSSLET_CODESIGN_IDENTITY:--}"
+codesign_keychain="${GLOSSLET_CODESIGN_KEYCHAIN:-}"
+codesign_timestamp="${GLOSSLET_CODESIGN_TIMESTAMP:-auto}"
+
+case "$codesign_timestamp" in
+    auto | yes | no) ;;
+    *)
+        echo \
+            "GLOSSLET_CODESIGN_TIMESTAMP must be auto, yes, or no." \
+            >&2
+        exit 1
+        ;;
+esac
 
 cd "$repo_root"
 build_arguments=(
@@ -34,8 +46,17 @@ codesign_arguments=(
     --sign "$codesign_identity"
     --identifier com.winechord.glosslet
 )
+if [[ -n "$codesign_keychain" ]]; then
+    codesign_arguments+=(--keychain "$codesign_keychain")
+fi
 if [[ "$codesign_identity" != "-" ]]; then
-    codesign_arguments+=(--options runtime --timestamp)
+    codesign_arguments+=(--options runtime)
+    if [[ "$codesign_timestamp" == "yes" ]] \
+        || { [[ "$codesign_timestamp" == "auto" ]] \
+            && [[ "$codesign_identity" == "Developer ID Application:"* ]]; }
+    then
+        codesign_arguments+=(--timestamp)
+    fi
 fi
 codesign "${codesign_arguments[@]}" "$app_path"
 

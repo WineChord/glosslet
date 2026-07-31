@@ -34,6 +34,7 @@ enum L10n {
         "显示当前对话"
     )
     static let settings = text("Settings…", "设置…")
+    static let openGlosslet = text("Open Glosslet", "打开 Glosslet")
     static let quit = text("Quit Glosslet", "退出 Glosslet")
     static let pause = text("Pause selection toolbar", "暂停划词工具条")
     static let resume = text("Enable selection toolbar", "启用划词工具条")
@@ -58,7 +59,34 @@ enum L10n {
         "Already enabled after an update? Turn Glosslet off and on again. If it is still not recognized, remove the old entry and add the current app.",
         "更新后开关已经开启但仍未识别？请先关闭再重新开启 Glosslet；如果仍无效，请移除旧条目后重新添加当前应用。"
     )
-    static let getStarted = text("Start using Glosslet", "开始使用 Glosslet")
+    static let finishSetup = text(
+        "Finish setup",
+        "完成设置"
+    )
+    static let readyTitle = text(
+        "Glosslet is ready.",
+        "Glosslet 已准备就绪。"
+    )
+    static let readyBody = text(
+        "Closing this window does not quit Glosslet. It keeps running from the menu bar; open the app again at any time to return here.",
+        "关闭此窗口不会退出 Glosslet。它会继续在菜单栏运行；随时再次打开应用即可回到这里。"
+    )
+    static let menuBarContinuation = text(
+        "The window will close; Glosslet will keep running in the menu bar.",
+        "窗口将会关闭；Glosslet 会继续在菜单栏运行。"
+    )
+    static let readyStatus = text(
+        "Glosslet is ready · Select any text",
+        "Glosslet 已就绪 · 现在可以划词"
+    )
+    static let permissionRequiredStatus = text(
+        "Accessibility permission required",
+        "需要辅助功能权限"
+    )
+    static let repairAccess = text(
+        "Repair stale permission entry…",
+        "修复失效的权限条目…"
+    )
     static let selectedFrom = text("Selected from", "选自")
     static let askFollowUp = text("Ask a follow-up…", "继续追问…")
     static let returnHint = text(

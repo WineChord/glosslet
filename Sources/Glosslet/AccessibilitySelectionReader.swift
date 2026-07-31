@@ -3,6 +3,8 @@ import ApplicationServices
 import GlossletCore
 
 struct AccessibilitySelectionReader {
+    private static let bundleIdentifier = "com.winechord.glosslet"
+
     static var isTrusted: Bool {
         AXIsProcessTrusted()
     }
@@ -27,6 +29,32 @@ struct AccessibilitySelectionReader {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    static func repairTrust() throws {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = [
+            "reset",
+            "Accessibility",
+            bundleIdentifier,
+        ]
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let detail = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw AccessibilityPermissionRepairError.failed(
+                detail.flatMap { $0.isEmpty ? nil : $0 }
+            )
+        }
+
+        openAccessibilitySettings()
     }
 
     func currentSelection(anchorHint: CGPoint? = nil) -> SelectionSnapshot? {
@@ -312,5 +340,20 @@ struct AccessibilitySelectionReader {
             width: max(bounds.width, 1),
             height: max(bounds.height, 1)
         )
+    }
+}
+
+private enum AccessibilityPermissionRepairError: LocalizedError {
+    case failed(String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let detail):
+            return detail
+                ?? L10n.text(
+                    "macOS could not reset the old Accessibility entry.",
+                    "macOS 未能重置旧的辅助功能权限条目。"
+                )
+        }
     }
 }

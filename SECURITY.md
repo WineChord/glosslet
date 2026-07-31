@@ -16,6 +16,8 @@ impact. Avoid including real credentials or private selected text.
 ## Security model
 
 - Glosslet reads the current selection through macOS Accessibility.
+- Its permission repair action can reset only Glosslet's own Accessibility
+  record; macOS still requires the user to grant access explicitly.
 - Secure text fields are excluded.
 - Copy never leaves the Mac.
 - Explain sends the selection through the user's installed Codex app server.

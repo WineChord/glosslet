@@ -1,22 +1,25 @@
 import AppKit
 import Combine
+import CoreServices
 import GlossletCore
 
 @MainActor
 final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let preferences = AppPreferences()
+    private let permissionMonitor: AccessibilityPermissionMonitor
     private lazy var conversation = ConversationController(
         preferences: preferences
     )
     private lazy var panels = PanelCoordinator(
         conversation: conversation,
-        preferences: preferences
+        preferences: preferences,
+        permissionMonitor: permissionMonitor
     )
     private lazy var selectionMonitor = SelectionMonitor {
         [weak self] selection in
         guard let self,
             self.preferences.selectionEnabled,
-            AccessibilitySelectionReader.isTrusted
+            self.permissionMonitor.isTrusted
         else {
             self?.panels.hideToolbar()
             return
@@ -31,6 +34,18 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var statusItem: NSStatusItem?
     private var subscriptions = Set<AnyCancellable>()
 
+    override init() {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--render-onboarding-ready-preview") {
+            permissionMonitor = AccessibilityPermissionMonitor {
+                true
+            }
+        } else {
+            permissionMonitor = AccessibilityPermissionMonitor()
+        }
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let arguments = ProcessInfo.processInfo.arguments
         let isRenderingPreview = arguments.contains("--render-preview")
@@ -40,10 +55,17 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         let isToolbarPreview = arguments.contains(
             "--render-toolbar-preview"
         )
+        let isOnboardingPreview =
+            arguments.contains(
+                "--render-onboarding-preview"
+            ) || arguments.contains("--render-onboarding-ready-preview")
         configureStatusItem()
         bindPreferences()
+        permissionMonitor.start()
 
-        if isToolbarPreview {
+        if isOnboardingPreview {
+            panels.showOnboarding()
+        } else if isToolbarPreview {
             NSApp.setActivationPolicy(.regular)
             let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
             let anchor = CGRect(
@@ -85,15 +107,25 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             selectionMonitor.start()
             conversation.prepare()
             if !preferences.completedOnboarding
-                || !AccessibilitySelectionReader.isTrusted
+                || !permissionMonitor.isTrusted
+                || !isLoginItemLaunch
             {
-                panels.showOnboarding()
+                panels.showMainWindow()
             }
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         selectionMonitor.stop()
+        permissionMonitor.stop()
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows _: Bool
+    ) -> Bool {
+        panels.showMainWindow()
+        return true
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -113,6 +145,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         item.menu = menu
         statusItem = item
         rebuildStatusMenu(menu)
+        updateStatusItemTooltip()
     }
 
     private func bindPreferences() {
@@ -124,10 +157,52 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 }
             }
             .store(in: &subscriptions)
+
+        permissionMonitor.onChange = { [weak self] isTrusted in
+            guard let self else {
+                return
+            }
+            if isTrusted {
+                self.selectionMonitor.probeNow()
+            } else {
+                self.panels.hideToolbar()
+            }
+            self.updateStatusItemTooltip()
+        }
     }
 
     private func rebuildStatusMenu(_ menu: NSMenu) {
         menu.removeAllItems()
+
+        let readinessItem = NSMenuItem(
+            title: permissionMonitor.isTrusted
+                ? L10n.readyStatus
+                : L10n.permissionRequiredStatus,
+            action: nil,
+            keyEquivalent: ""
+        )
+        readinessItem.isEnabled = false
+        readinessItem.image = NSImage(
+            systemSymbolName:
+                permissionMonitor.isTrusted
+                ? "checkmark.circle.fill"
+                : "exclamationmark.triangle.fill",
+            accessibilityDescription: nil
+        )
+        menu.addItem(readinessItem)
+
+        let openItem = NSMenuItem(
+            title: L10n.openGlosslet,
+            action: #selector(openGlosslet),
+            keyEquivalent: ""
+        )
+        openItem.target = self
+        openItem.image = NSImage(
+            systemSymbolName: "macwindow",
+            accessibilityDescription: nil
+        )
+        menu.addItem(openItem)
+        menu.addItem(.separator())
 
         let stateItem = NSMenuItem(
             title: preferences.selectionEnabled ? L10n.pause : L10n.resume,
@@ -168,7 +243,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         )
         menu.addItem(settingsItem)
 
-        if !AccessibilitySelectionReader.isTrusted {
+        if !permissionMonitor.isTrusted {
             let permissionItem = NSMenuItem(
                 title: L10n.grantAccess,
                 action: #selector(requestAccessibility),
@@ -199,6 +274,10 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         }
     }
 
+    @objc private func openGlosslet() {
+        panels.showMainWindow()
+    }
+
     @objc private func openSettings() {
         panels.showSettings()
     }
@@ -210,6 +289,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     @objc private func requestAccessibility() {
         AccessibilitySelectionReader.openAccessibilitySettings()
         panels.showOnboarding()
+        permissionMonitor.refresh()
     }
 
     @objc private func quit() {
@@ -250,5 +330,17 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         image.isTemplate = true
         image.accessibilityDescription = "Glosslet"
         return image
+    }
+
+    private func updateStatusItemTooltip() {
+        statusItem?.button?.toolTip =
+            permissionMonitor.isTrusted
+            ? L10n.readyStatus
+            : L10n.permissionRequiredStatus
+    }
+
+    private var isLoginItemLaunch: Bool {
+        NSAppleEventManager.shared().currentAppleEvent?
+            .attributeDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
     }
 }

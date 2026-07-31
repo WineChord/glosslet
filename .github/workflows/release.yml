@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build signed release
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)"
+          test "v$version" = "$GITHUB_REF_NAME"
+
+      - name: Run validation
+        run: scripts/check.sh
+
+      - name: Import stable release identity
+        env:
+          SIGNING_IDENTITY: ${{ secrets.GLOSSLET_SIGNING_IDENTITY }}
+          SIGNING_P12_BASE64: ${{ secrets.GLOSSLET_SIGNING_P12_BASE64 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.GLOSSLET_SIGNING_P12_PASSWORD }}
+        run: |
+          signing_dir="$RUNNER_TEMP/glosslet-signing"
+          keychain="$signing_dir/release.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          mkdir -p "$signing_dir"
+          printf '%s' "$SIGNING_P12_BASE64" | base64 -D > "$signing_dir/release.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security import "$signing_dir/release.p12" \
+            -k "$keychain" \
+            -P "$SIGNING_P12_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain"
+          security list-keychains -d user -s \
+            "$keychain" \
+            "$HOME/Library/Keychains/login.keychain-db" \
+            /Library/Keychains/System.keychain
+          security find-certificate \
+            -c "$SIGNING_IDENTITY" \
+            -p \
+            "$keychain" \
+            > "$signing_dir/release.pem"
+          sudo security add-trusted-cert \
+            -d \
+            -r trustRoot \
+            -p codeSign \
+            -k /Library/Keychains/System.keychain \
+            "$signing_dir/release.pem"
+          security find-identity -v -p codesigning "$keychain"
+          echo "GLOSSLET_RELEASE_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Package signed app
+        env:
+          GLOSSLET_CODESIGN_IDENTITY: ${{ secrets.GLOSSLET_SIGNING_IDENTITY }}
+          GLOSSLET_CODESIGN_KEYCHAIN: ${{ env.GLOSSLET_RELEASE_KEYCHAIN }}
+          GLOSSLET_CODESIGN_TIMESTAMP: "no"
+        run: scripts/package_release.sh
+
+      - name: Verify stable identity
+        run: |
+          requirement="$(codesign -d -r- dist/Glosslet.app 2>&1)"
+          printf '%s\n' "$requirement"
+          test "${requirement#*certificate root = H}" != "$requirement"
+          test "${requirement#*cdhash}" = "$requirement"
+          codesign --verify --deep --strict --verbose=2 dist/Glosslet.app
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)"
+          archive="dist/Glosslet-$version-macos.zip"
+          checksum="$archive.sha256"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$archive" "$checksum" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "$archive" \
+              "$checksum" \
+              --title "Glosslet $version" \
+              --generate-notes
+          fi

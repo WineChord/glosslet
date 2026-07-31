@@ -5,14 +5,10 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var preferences: AppPreferences
     @ObservedObject var conversation: ConversationController
+    @ObservedObject var permissionMonitor: AccessibilityPermissionMonitor
     @State private var launchError: String?
-    @State private var accessibilityTrusted =
-        AccessibilitySelectionReader.isTrusted
-    private let permissionTimer = Timer.publish(
-        every: 1,
-        on: .main,
-        in: .common
-    ).autoconnect()
+    @State private var permissionRepairError: String?
+    @State private var isRepairingPermission = false
 
     var body: some View {
         TabView {
@@ -33,11 +29,8 @@ struct SettingsView: View {
         .frame(width: 530, height: 410)
         .tint(Color(red: 0.17, green: 0.16, blue: 0.35))
         .task {
-            accessibilityTrusted = AccessibilitySelectionReader.isTrusted
+            permissionMonitor.refresh()
             await conversation.refreshModels(showErrors: false)
-        }
-        .onReceive(permissionTimer) { _ in
-            accessibilityTrusted = AccessibilitySelectionReader.isTrusted
         }
     }
 
@@ -56,7 +49,7 @@ struct SettingsView: View {
             )
 
             LabeledContent(L10n.accessibilityTitle) {
-                if accessibilityTrusted {
+                if permissionMonitor.isTrusted {
                     Label(
                         L10n.accessGranted,
                         systemImage: "checkmark.circle.fill"
@@ -66,17 +59,28 @@ struct SettingsView: View {
                     Button(L10n.grantAccess) {
                         AccessibilitySelectionReader
                             .openAccessibilitySettings()
-                        accessibilityTrusted =
-                            AccessibilitySelectionReader.isTrusted
+                        permissionMonitor.refresh()
                     }
                 }
             }
 
-            if !accessibilityTrusted {
+            if !permissionMonitor.isTrusted {
                 Text(L10n.accessibilityRepairHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Button(L10n.repairAccess) {
+                    repairAccessibilityPermission()
+                }
+                .disabled(isRepairingPermission)
+
+                if let permissionRepairError {
+                    Text(permissionRepairError)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Picker(
@@ -245,6 +249,18 @@ struct SettingsView: View {
         }
     }
 
+    private func repairAccessibilityPermission() {
+        isRepairingPermission = true
+        defer { isRepairingPermission = false }
+        do {
+            try AccessibilitySelectionReader.repairTrust()
+            permissionRepairError = nil
+            permissionMonitor.refresh()
+        } catch {
+            permissionRepairError = error.localizedDescription
+        }
+    }
+
     private func shortIdentifier(_ identifier: String) -> String {
         guard identifier.count > 18 else {
             return identifier
@@ -257,22 +273,23 @@ struct SettingsView: View {
 
 struct OnboardingView: View {
     @ObservedObject var preferences: AppPreferences
+    @ObservedObject var permissionMonitor: AccessibilityPermissionMonitor
     let onFinish: () -> Void
 
-    @State private var trusted = AccessibilitySelectionReader.isTrusted
-    private let permissionTimer = Timer.publish(
-        every: 1,
-        on: .main,
-        in: .common
-    ).autoconnect()
+    @State private var permissionRepairError: String?
+    @State private var isRepairingPermission = false
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 GlossletMark(size: 72)
-                Text(L10n.onboardingTitle)
-                    .font(.system(size: 26, weight: .bold))
-                    .multilineTextAlignment(.center)
+                Text(
+                    permissionMonitor.isTrusted
+                        ? L10n.readyTitle
+                        : L10n.onboardingTitle
+                )
+                .font(.system(size: 26, weight: .bold))
+                .multilineTextAlignment(.center)
                 Text(
                     L10n.text(
                         "Select text in almost any app. A tiny Explain · Copy toolbar appears beside it, and Codex answers in a floating conversation you can keep using.",
@@ -300,27 +317,35 @@ struct OnboardingView: View {
                     }
                 } icon: {
                     Image(
-                        systemName: trusted
+                        systemName: permissionMonitor.isTrusted
                             ? "checkmark.shield.fill"
                             : "hand.raised.fill"
                     )
                     .font(.system(size: 24))
-                    .foregroundStyle(trusted ? .green : .indigo)
+                    .foregroundStyle(
+                        permissionMonitor.isTrusted ? .green : .indigo
+                    )
                 }
 
-                if trusted {
-                    Label(
-                        L10n.accessGranted,
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.green)
+                if permissionMonitor.isTrusted {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Label(
+                            L10n.accessGranted,
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.green)
+                        Text(L10n.readyBody)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         Button(L10n.grantAccess) {
                             AccessibilitySelectionReader
                                 .openAccessibilitySettings()
-                            trusted = AccessibilitySelectionReader.isTrusted
+                            permissionMonitor.refresh()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
@@ -329,6 +354,21 @@ struct OnboardingView: View {
                             .font(.system(size: 10.5))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        Button(L10n.repairAccess) {
+                            repairAccessibilityPermission()
+                        }
+                        .disabled(isRepairingPermission)
+
+                        if let permissionRepairError {
+                            Text(permissionRepairError)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.orange)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                        }
                     }
                 }
             }
@@ -339,28 +379,42 @@ struct OnboardingView: View {
 
             HStack {
                 Text(
-                    L10n.text(
-                        "Uses your existing Codex sign-in and settings.",
-                        "沿用你现有的 Codex 登录状态与设置。"
-                    )
+                    permissionMonitor.isTrusted
+                        ? L10n.menuBarContinuation
+                        : L10n.text(
+                            "Uses your existing Codex sign-in and settings.",
+                            "沿用你现有的 Codex 登录状态与设置。"
+                        )
                 )
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 Spacer()
-                Button(L10n.getStarted) {
+                Button(L10n.finishSetup) {
                     preferences.completedOnboarding = true
                     onFinish()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(!trusted)
+                .disabled(!permissionMonitor.isTrusted)
             }
             .padding(30)
         }
         .frame(width: 540, height: 520)
         .background(.regularMaterial)
-        .onReceive(permissionTimer) { _ in
-            trusted = AccessibilitySelectionReader.isTrusted
+        .task {
+            permissionMonitor.refresh()
+        }
+    }
+
+    private func repairAccessibilityPermission() {
+        isRepairingPermission = true
+        defer { isRepairingPermission = false }
+        do {
+            try AccessibilitySelectionReader.repairTrust()
+            permissionRepairError = nil
+            permissionMonitor.refresh()
+        } catch {
+            permissionRepairError = error.localizedDescription
         }
     }
 }
