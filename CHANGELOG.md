@@ -2,6 +2,18 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.6 — 2026-07-31
+
+- Removed Glosslet's app-level 32k proactive-compaction threshold and its
+  background maintenance state so Codex remains the sole owner of context
+  compaction and rollover.
+- Sends explanations and follow-ups directly to the reused persistent task
+  without waiting for a Glosslet-scheduled maintenance turn.
+- Keeps native context-management events compatible with the floating status
+  display without treating the entire response turn as maintenance output.
+- Reworked the live integration check to verify two-turn context continuity on
+  one persistent Codex task without manually requesting compaction.
+
 ## 0.2.5 — 2026-07-31
 
 - Replaced the in-layout configuration drawer with a floating overlay so model

@@ -52,9 +52,9 @@ either place. Glosslet never uses hidden or ephemeral threads.
 - Restores the fixed task and prewarms Codex skills, hooks, and MCP metadata
   when Glosslet launches, then keeps that task attached for fast consecutive
   explanations.
-- Uses Codex's own context compaction when a long-running fixed task grows
-  large, preserving the task and its visible history while keeping later turns
-  responsive. Native compaction is a Codex model operation and consumes usage.
+- Leaves context-window management, automatic compaction, and rollover to
+  Codex. Glosslet reuses the persistent task without imposing its own token
+  threshold or starting background maintenance turns.
 - Distinguishes connection, task refresh, model thinking, and response writing,
   with live elapsed time instead of an indefinite generic spinner.
 - Reuses one fixed Codex task by default, or creates a new task for every

@@ -98,7 +98,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         XCTAssertTrue(result.contains(marker), result)
     }
 
-    func testPriorityThreadCompactsAndContinues() async throws {
+    func testPriorityThreadReusesNativeContextAndContinues() async throws {
         guard
             ProcessInfo.processInfo.environment[
                 "GLOSSLET_RUN_CODEX_INTEGRATION"
@@ -131,7 +131,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         )
         try await client.setThreadName(
             threadID: threadID,
-            name: "Glosslet — Performance integration check"
+            name: "Glosslet — Native reuse integration check"
         )
         await client.prewarmRuntime(
             workingDirectory: workspace,
@@ -139,38 +139,31 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         )
 
         do {
-            let firstMarker =
-                "GLOSSLET_FAST_\(UUID().uuidString.prefix(8))"
+            let continuityMarker =
+                "GLOSSLET_REUSE_\(UUID().uuidString.prefix(8))"
             let first = try await Self.runTurn(
                 client: client,
                 stream: stream,
                 threadID: threadID,
-                text: "Reply with exactly \(firstMarker) and nothing else.",
+                text:
+                    "Remember this continuity marker for the next turn: "
+                    + "\(continuityMarker). Reply with exactly READY.",
                 choice: choice,
                 workspace: workspace
             )
-            XCTAssertTrue(first.contains(firstMarker), first)
+            XCTAssertTrue(first.contains("READY"), first)
 
-            let compactionTask = Task {
-                try await Self.collectCompletion(
-                    from: stream,
-                    threadID: threadID
-                )
-            }
-            try await client.compactThread(threadID: threadID)
-            _ = try await Self.withTimeout(compactionTask)
-
-            let secondMarker =
-                "GLOSSLET_AFTER_COMPACT_\(UUID().uuidString.prefix(8))"
             let second = try await Self.runTurn(
                 client: client,
                 stream: stream,
                 threadID: threadID,
-                text: "Reply with exactly \(secondMarker) and nothing else.",
+                text:
+                    "Reply with exactly the continuity marker from my "
+                    + "previous message and nothing else.",
                 choice: choice,
                 workspace: workspace
             )
-            XCTAssertTrue(second.contains(secondMarker), second)
+            XCTAssertTrue(second.contains(continuityMarker), second)
         } catch {
             try? await client.archiveThread(threadID: threadID)
             await client.shutdown()
@@ -179,14 +172,14 @@ final class CodexAppServerIntegrationTests: XCTestCase {
 
         try await client.archiveThread(threadID: threadID)
         await client.shutdown()
-        print("GLOSSLET_PERFORMANCE_THREAD_ID=\(threadID)")
-        print("GLOSSLET_PERFORMANCE_MODEL=\(choice.model ?? "default")")
+        print("GLOSSLET_REUSE_THREAD_ID=\(threadID)")
+        print("GLOSSLET_REUSE_MODEL=\(choice.model ?? "default")")
         print(
-            "GLOSSLET_PERFORMANCE_EFFORT="
+            "GLOSSLET_REUSE_EFFORT="
                 + (choice.reasoningEffort ?? "default")
         )
         print(
-            "GLOSSLET_PERFORMANCE_SERVICE_TIER="
+            "GLOSSLET_REUSE_SERVICE_TIER="
                 + (choice.serviceTier ?? "default")
         )
     }

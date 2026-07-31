@@ -100,12 +100,11 @@ app-server and reloads the persistent task from disk before the next request
 only in that case. This preserves cross-process history without imposing a cold
 start on every explanation.
 
-App-server reports the latest turn's context usage. When the fixed task crosses
-a conservative input-token threshold while idle, Glosslet starts Codex's native
-`thread/compact/start` operation. Compaction keeps the same persistent task and
-rollout history while replacing the model's working context with a compact
-summary. A user request always takes precedence over scheduled maintenance.
-Native compaction is itself a Codex model operation and consumes usage.
+Codex remains responsible for context-window management, automatic compaction,
+and rollover. Glosslet does not choose a token threshold, schedule a background
+maintenance turn, or call `thread/compact/start`. It resumes the persistent task
+and submits each explanation or follow-up directly through `turn/start`, while
+native context-management events remain part of the Codex task lifecycle.
 
 ## Model policy
 

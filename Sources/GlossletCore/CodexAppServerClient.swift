@@ -329,16 +329,6 @@ public actor CodexAppServerClient {
         return turnID
     }
 
-    public func compactThread(threadID: String) async throws {
-        try await connect()
-        _ = try await sendRequest(
-            method: "thread/compact/start",
-            params: .object([
-                "threadId": .string(threadID)
-            ])
-        )
-    }
-
     public func interruptTurn(
         threadID: String,
         turnID: String
