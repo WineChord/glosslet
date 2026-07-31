@@ -74,6 +74,13 @@ newline-delimited JSON-RPC messages over standard input and output. Responses,
 notifications, streamed agent-message deltas, turn lifecycle events, and
 approval requests are decoded into typed Swift values.
 
+An active task remains attached to the live app-server process across
+consecutive Glosslet turns. The transcript reports connection, history refresh,
+reasoning, and response-writing stages separately and derives elapsed time from
+the original request timestamp. Concurrent startup callers share one connection
+task so onboarding, model discovery, and an immediate selection cannot race
+multiple app-server processes.
+
 ## Persistent task invariant
 
 Every new task uses `thread/start` with `ephemeral: false`. Glosslet never calls
@@ -83,9 +90,11 @@ starts a separate persistent task each time.
 
 Tasks use the same Codex home and authentication as the user's Codex app, so
 the Codex app can discover and continue them. The reverse direction works too:
-before reusing a task or sending a follow-up, Glosslet restarts its app-server
-connection and reloads the persistent task from disk. This avoids relying on a
-stale in-process history when the Codex app added turns independently.
+consecutive Glosslet requests reuse the already attached task, while activation
+of the Codex app marks that task as externally changed. Glosslet restarts the
+app-server and reloads the persistent task from disk before the next request
+only in that case. This preserves cross-process history without imposing a cold
+start on every explanation.
 
 ## Model policy
 

@@ -53,6 +53,28 @@ assert.ok(
   "renderer HTML must not use remote assets"
 );
 
+const rendererJavaScript = fs.readFileSync(
+  path.join(rendererRoot, "renderer.js"),
+  "utf8"
+);
+assert.ok(
+  rendererJavaScript.includes("startedAtMilliseconds"),
+  "streaming activity must retain its request start time"
+);
+assert.ok(
+  rendererJavaScript.includes("updateThinkingLabels"),
+  "streaming activity must update its elapsed time"
+);
+
+const rendererStyles = fs.readFileSync(
+  path.join(rendererRoot, "style.css"),
+  "utf8"
+);
+assert.ok(
+  rendererStyles.includes(":last-child:not(.thinking)::after"),
+  "the streaming cursor must not trail the thinking indicator"
+);
+
 const MarkdownIt = require(path.join(vendorRoot, "markdown-it.min.js"));
 const markdown = MarkdownIt({
   html: false,

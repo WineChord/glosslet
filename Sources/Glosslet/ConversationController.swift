@@ -13,17 +13,23 @@ struct ConversationMessage: Identifiable, Equatable {
     let role: ConversationRole
     var text: String
     var isStreaming: Bool
+    var activityText: String?
+    let startedAt: Date?
 
     init(
         id: UUID = UUID(),
         role: ConversationRole,
         text: String,
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        activityText: String? = nil,
+        startedAt: Date? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.isStreaming = isStreaming
+        self.activityText = activityText
+        self.startedAt = startedAt
     }
 }
 
@@ -66,6 +72,9 @@ final class ConversationController: ObservableObject {
     private var activeAssistantMessageID: UUID?
     private var pendingAssistantDelta = ""
     private var streamedItemIDs = Set<String>()
+    private var requestStartedAt: Date?
+    private var threadAttachment = ThreadAttachmentState()
+    private var codexActivationObserver: NSObjectProtocol?
     private var catalogLoaded = false
     private var preferenceSubscriptions = Set<AnyCancellable>()
 
@@ -94,12 +103,37 @@ final class ConversationController: ObservableObject {
             self?.resolveCurrentChoice()
         }
         .store(in: &preferenceSubscriptions)
+
+        codexActivationObserver =
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard
+                    let application = notification.userInfo?[
+                        NSWorkspace.applicationUserInfoKey
+                    ] as? NSRunningApplication,
+                    application.bundleIdentifier == "com.openai.codex"
+                else {
+                    return
+                }
+                Task { @MainActor in
+                    self?.threadAttachment
+                        .markExternalHistoryMayHaveChanged()
+                }
+            }
     }
 
     deinit {
         eventTask?.cancel()
         operationTask?.cancel()
         deltaFlushTask?.cancel()
+        if let codexActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(
+                codexActivationObserver
+            )
+        }
     }
 
     func prepare() {
@@ -207,6 +241,23 @@ final class ConversationController: ObservableObject {
         ]
     }
 
+    func loadThinkingPreview() {
+        loadRenderingPreview()
+        let startedAt = Date().addingTimeInterval(-12)
+        requestStartedAt = startedAt
+        isBusy = true
+        statusText = L10n.thinking
+        messages = [
+            ConversationMessage(
+                role: .assistant,
+                text: "",
+                isStreaming: true,
+                activityText: L10n.thinking,
+                startedAt: startedAt
+            )
+        ]
+    }
+
     func explain(_ selection: SelectionSnapshot, forceNewTask: Bool = false) {
         operationTask?.cancel()
         self.selection = selection
@@ -218,6 +269,8 @@ final class ConversationController: ObservableObject {
         activeAssistantMessageID = nil
         isBusy = true
         statusText = L10n.connecting
+        requestStartedAt = Date()
+        appendStreamingAssistant(activityText: L10n.connecting)
 
         operationTask = Task { [weak self] in
             guard let self else {
@@ -234,13 +287,19 @@ final class ConversationController: ObservableObject {
                 let shouldCreate =
                     forceNewTask
                     || preferences.threadMode == .newPerExplanation
+                if !shouldCreate,
+                    let storedThreadID = preferences.fixedThreadID,
+                    threadAttachment.action(for: storedThreadID) != .reuse
+                {
+                    updateAssistantActivity(L10n.restoringTask)
+                }
                 let identifier = try await obtainThread(
                     forceNew: shouldCreate,
                     selection: selection
                 )
                 threadID = identifier
-                appendStreamingAssistant()
                 statusText = L10n.thinking
+                updateAssistantActivity(L10n.thinking)
 
                 let prompt = GlossletPromptBuilder.initialPrompt(
                     for: selection,
@@ -259,6 +318,7 @@ final class ConversationController: ObservableObject {
                 finishStreamingMessage()
                 isBusy = false
                 statusText = L10n.stopped
+                requestStartedAt = nil
             } catch {
                 fail(error)
             }
@@ -278,9 +338,10 @@ final class ConversationController: ObservableObject {
         messages.append(
             ConversationMessage(role: .user, text: trimmed)
         )
-        appendStreamingAssistant()
+        requestStartedAt = Date()
+        appendStreamingAssistant(activityText: L10n.preparingTask)
         isBusy = true
-        statusText = L10n.thinking
+        statusText = L10n.preparingTask
 
         operationTask = Task { [weak self] in
             guard let self else {
@@ -290,12 +351,10 @@ final class ConversationController: ObservableObject {
                 try ensureWorkspaceExists()
                 let identifier: String
                 if let threadID {
-                    identifier = try await client.reloadThreadFromDisk(
-                        id: threadID,
-                        model: currentChoice.model,
-                        workingDirectory:
-                            GlossletConstants.defaultWorkspaceURL
-                    )
+                    if threadAttachment.action(for: threadID) != .reuse {
+                        updateAssistantActivity(L10n.restoringTask)
+                    }
+                    identifier = try await attachThread(id: threadID)
                 } else if let selection {
                     identifier = try await obtainThread(
                         forceNew: false,
@@ -311,6 +370,8 @@ final class ConversationController: ObservableObject {
                     )
                 }
 
+                statusText = L10n.thinking
+                updateAssistantActivity(L10n.thinking)
                 activeTurnID = try await client.startTurn(
                     threadID: identifier,
                     text: trimmed,
@@ -323,6 +384,7 @@ final class ConversationController: ObservableObject {
                 finishStreamingMessage()
                 isBusy = false
                 statusText = L10n.stopped
+                requestStartedAt = nil
             } catch {
                 fail(error)
             }
@@ -339,8 +401,10 @@ final class ConversationController: ObservableObject {
     func stop() {
         guard let threadID, let activeTurnID else {
             operationTask?.cancel()
+            finishStreamingMessage()
             isBusy = false
             statusText = L10n.stopped
+            requestStartedAt = nil
             return
         }
         Task { [weak self, client] in
@@ -369,6 +433,7 @@ final class ConversationController: ObservableObject {
             }
             return
         }
+        threadAttachment.markExternalHistoryMayHaveChanged()
         NSWorkspace.shared.open(url)
     }
 
@@ -511,12 +576,7 @@ final class ConversationController: ObservableObject {
             let stored = preferences.fixedThreadID
         {
             do {
-                return try await client.reloadThreadFromDisk(
-                    id: stored,
-                    model: currentChoice.model,
-                    workingDirectory:
-                        GlossletConstants.defaultWorkspaceURL
-                )
+                return try await attachThread(id: stored)
             } catch let error as AppServerProtocolError {
                 guard Self.isMissingThread(error) else {
                     throw error
@@ -530,6 +590,7 @@ final class ConversationController: ObservableObject {
             workingDirectory: GlossletConstants.defaultWorkspaceURL,
             persistent: true
         )
+        threadAttachment.markAttached(identifier)
         if preferences.threadMode == .reuseFixed {
             preferences.useFixedThread(identifier)
         }
@@ -541,6 +602,32 @@ final class ConversationController: ObservableObject {
             threadID: identifier,
             name: name
         )
+        return identifier
+    }
+
+    private func attachThread(id threadID: String) async throws -> String {
+        let action = threadAttachment.action(for: threadID)
+        let identifier: String
+        switch action {
+        case .reuse:
+            return threadID
+
+        case .resume:
+            identifier = try await client.resumeThread(
+                id: threadID,
+                model: currentChoice.model,
+                workingDirectory: GlossletConstants.defaultWorkspaceURL
+            )
+
+        case .reload:
+            threadAttachment.markProcessTerminated()
+            identifier = try await client.reloadThreadFromDisk(
+                id: threadID,
+                model: currentChoice.model,
+                workingDirectory: GlossletConstants.defaultWorkspaceURL
+            )
+        }
+        threadAttachment.markAttached(identifier)
         return identifier
     }
 
@@ -561,7 +648,7 @@ final class ConversationController: ObservableObject {
             + formatter.string(from: Date())
     }
 
-    private func appendStreamingAssistant() {
+    private func appendStreamingAssistant(activityText: String) {
         discardPendingDelta()
         let identifier = UUID()
         messages.append(
@@ -569,10 +656,24 @@ final class ConversationController: ObservableObject {
                 id: identifier,
                 role: .assistant,
                 text: "",
-                isStreaming: true
+                isStreaming: true,
+                activityText: activityText,
+                startedAt: requestStartedAt
             )
         )
         activeAssistantMessageID = identifier
+    }
+
+    private func updateAssistantActivity(_ activityText: String) {
+        statusText = activityText
+        guard let identifier = activeAssistantMessageID,
+            let index = messages.firstIndex(where: {
+                $0.id == identifier
+            })
+        else {
+            return
+        }
+        messages[index].activityText = activityText
     }
 
     private func appendDelta(_ delta: String, itemID: String) {
@@ -635,6 +736,7 @@ final class ConversationController: ObservableObject {
             messages[index].text = finalText
         }
         messages[index].isStreaming = false
+        messages[index].activityText = nil
         activeAssistantMessageID = nil
     }
 
@@ -643,7 +745,14 @@ final class ConversationController: ObservableObject {
         activeTurnID = nil
         isBusy = false
         errorMessage = error.localizedDescription
-        statusText = L10n.text("Couldn’t complete", "未能完成")
+        if let requestStartedAt {
+            statusText = L10n.failedIn(
+                Date().timeIntervalSince(requestStartedAt)
+            )
+        } else {
+            statusText = L10n.text("Couldn’t complete", "未能完成")
+        }
+        requestStartedAt = nil
     }
 
     private func handle(_ event: AppServerEvent) {
@@ -653,7 +762,17 @@ final class ConversationController: ObservableObject {
                 return
             }
             activeTurnID = turnID
-            statusText = L10n.thinking
+            updateAssistantActivity(L10n.thinking)
+
+        case .itemStarted(let eventThreadID, _, let item):
+            guard eventThreadID == threadID else {
+                return
+            }
+            if item.type == "agentMessage" {
+                updateAssistantActivity(L10n.writingResponse)
+            } else if item.type == "reasoning" {
+                updateAssistantActivity(L10n.thinking)
+            }
 
         case .agentMessageDelta(
             let eventThreadID,
@@ -691,7 +810,13 @@ final class ConversationController: ObservableObject {
             activeTurnID = nil
             isBusy = false
             if status == "completed" {
-                statusText = L10n.done
+                if let requestStartedAt {
+                    statusText = L10n.completedIn(
+                        Date().timeIntervalSince(requestStartedAt)
+                    )
+                } else {
+                    statusText = L10n.done
+                }
             } else if status == "interrupted" {
                 statusText = L10n.stopped
             } else {
@@ -700,6 +825,7 @@ final class ConversationController: ObservableObject {
             if let eventError, !eventError.isEmpty {
                 errorMessage = eventError
             }
+            requestStartedAt = nil
 
         case .serverRequest(let request):
             pendingApproval = PendingApproval(
@@ -714,6 +840,7 @@ final class ConversationController: ObservableObject {
             }
 
         case .processTerminated(let details):
+            threadAttachment.markProcessTerminated()
             guard isBusy else {
                 return
             }
@@ -727,7 +854,7 @@ final class ConversationController: ObservableObject {
                 )
             )
 
-        case .itemStarted, .notification:
+        case .notification:
             break
         }
     }

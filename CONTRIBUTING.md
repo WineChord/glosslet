@@ -26,6 +26,25 @@ scripts/build_app.sh release
 open dist/Glosslet.app --args --render-preview
 ```
 
+The selection toolbar has a separate preview that does not require
+Accessibility access:
+
+```bash
+open -n dist/Glosslet.app --args --render-toolbar-preview
+```
+
+The live waiting state has a deterministic preview as well:
+
+```bash
+open -n dist/Glosslet.app --args --render-thinking-preview
+```
+
+`scripts/build_app.sh` uses an ad-hoc signature by default. Release maintainers
+can set `GLOSSLET_CODESIGN_IDENTITY` to a Developer ID Application identity.
+Set `GLOSSLET_NOTARY_PROFILE` as well when `notarytool` credentials have been
+stored in the keychain; `scripts/package_release.sh` then submits, staples, and
+validates the app before creating the final archive.
+
 Live integration tests are deliberately opt-in because they use the signed-in
 Codex account and create a persistent task:
 

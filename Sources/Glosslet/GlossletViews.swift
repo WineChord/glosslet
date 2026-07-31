@@ -28,6 +28,8 @@ struct GlossletMark: View {
 }
 
 struct SelectionToolbarView: View {
+    static let windowShadowInset: CGFloat = 14
+
     let onExplain: () -> Void
     let onCopy: () -> Void
 
@@ -48,13 +50,20 @@ struct SelectionToolbarView: View {
             )
         }
         .padding(4)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .shadow(
+                    color: .black.opacity(0.14),
+                    radius: 10,
+                    y: 4
+                )
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.11))
         }
-        .shadow(color: .black.opacity(0.13), radius: 18, y: 7)
+        .padding(Self.windowShadowInset)
     }
 }
 

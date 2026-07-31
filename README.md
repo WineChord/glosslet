@@ -49,8 +49,10 @@ either place. Glosslet never uses hidden or ephemeral threads.
   conversation should remain above other apps.
 - Supports follow-ups, stopping a turn, approvals, and opening the exact task
   in the Codex app.
-- Reloads persistent history before every continuation, so turns added in the
-  Codex app are present when the conversation continues in Glosslet.
+- Keeps the active task warm for faster consecutive explanations and reloads
+  persistent history after the Codex app may have changed it.
+- Distinguishes connection, task refresh, model thinking, and response writing,
+  with live elapsed time instead of an indefinite generic spinner.
 - Reuses one fixed Codex task by default, or creates a new task for every
   explanation.
 - Dynamically selects Codex's latest default model at its lowest advertised
@@ -86,13 +88,27 @@ scripts/build_app.sh release
 open dist/Glosslet.app
 ```
 
-The local build is ad-hoc signed. On first launch, use Glosslet's onboarding to
+The default local build is ad-hoc signed. On first launch, use Glosslet's onboarding to
 open **System Settings → Privacy & Security → Accessibility**, then enable
 Glosslet. Rebuilding changes an ad-hoc signature, so macOS may require local
 developers to grant that permission again. System Settings can leave the old
 entry looking enabled even though it no longer matches the rebuilt app. Turn
 Glosslet off and on; if it is still not recognized, remove the old entry and
 add the current `dist/Glosslet.app`.
+
+Release maintainers can provide a stable Apple code identity and optional
+notarization profile:
+
+```bash
+GLOSSLET_CODESIGN_IDENTITY="Developer ID Application: Example (TEAMID)" \
+GLOSSLET_NOTARY_PROFILE="glosslet-notary" \
+scripts/package_release.sh
+```
+
+A Developer ID-signed update keeps a stable designated requirement, so macOS
+can normally preserve Accessibility authorization across versions installed at
+the same path. The public package remains ad-hoc signed until the project has
+that certificate and notarization credential.
 
 Run the full local validation:
 
@@ -113,9 +129,10 @@ GLOSSLET_RUN_CODEX_INTEGRATION=1 \
 Glosslet launches `codex app-server` from the user's existing Codex
 installation. It creates threads with `ephemeral: false`, gives them recognizable
 `Glosslet — …` titles, and stores the fixed task identifier locally for reuse.
-Before reuse, Glosslet restarts its app-server connection and reloads the
-persistent history, including turns added from the Codex app. The floating
-panel's **Open Codex** button deep-links to that exact task.
+Consecutive Glosslet turns reuse the live task without another process restart.
+When the Codex app is opened, Glosslet marks the task for a disk refresh before
+the next turn so independently added history is restored. The floating panel's
+**Open Codex** button deep-links to that exact task.
 
 No API key is stored by Glosslet, and no separate chat database is created.
 See [Architecture](docs/ARCHITECTURE.md) for the protocol flow.
@@ -139,7 +156,8 @@ Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅
 
 本地重新构建会改变临时签名。如果系统设置中的 Glosslet 开关看似已开启，但应用
 仍未识别，请先关闭再重新开启；如果仍无效，请移除旧条目后重新添加当前的
-`dist/Glosslet.app`。
+`dist/Glosslet.app`。使用固定的 Developer ID 签名并在同一路径覆盖安装后，macOS
+通常可以在版本升级时继续沿用原有辅助功能授权；公开包目前仍是临时签名。
 
 ## Contributing
 

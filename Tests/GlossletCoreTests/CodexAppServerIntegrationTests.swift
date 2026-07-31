@@ -4,6 +4,27 @@ import XCTest
 @testable import GlossletCore
 
 final class CodexAppServerIntegrationTests: XCTestCase {
+    func testConcurrentModelRequestsShareConnection() async throws {
+        guard
+            ProcessInfo.processInfo.environment[
+                "GLOSSLET_RUN_CODEX_INTEGRATION"
+            ] == "1"
+        else {
+            throw XCTSkip(
+                "Set GLOSSLET_RUN_CODEX_INTEGRATION=1 to run against Codex."
+            )
+        }
+
+        let client = CodexAppServerClient()
+        async let firstModels = client.listModels()
+        async let secondModels = client.listModels()
+        let (first, second) = try await (firstModels, secondModels)
+
+        await client.shutdown()
+        XCTAssertFalse(first.isEmpty)
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+    }
+
     func testPersistentThreadStreamsAndCompletes() async throws {
         guard
             ProcessInfo.processInfo.environment[

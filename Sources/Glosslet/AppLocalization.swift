@@ -74,7 +74,17 @@ enum L10n {
         "已保存到 Codex"
     )
     static let connecting = text("Connecting to Codex…", "正在连接 Codex…")
+    static let preparingTask = text("Preparing task…", "正在准备任务…")
+    static let restoringTask = text(
+        "Refreshing Codex task…",
+        "正在刷新 Codex 任务…"
+    )
     static let thinking = text("Codex is thinking…", "Codex 正在思考…")
+    static let writingResponse = text(
+        "Codex is writing…",
+        "Codex 正在组织回复…"
+    )
+    static let elapsedSecondsSuffix = text("s", " 秒")
     static let stopped = text("Stopped", "已停止")
     static let done = text("Done", "已完成")
     static let approval = text("Codex needs approval", "Codex 需要授权")
@@ -130,6 +140,22 @@ enum L10n {
         "Glosslet is an open-source, unofficial companion for Codex.",
         "Glosslet 是一个开源、非官方的 Codex 辅助工具。"
     )
+
+    static func completedIn(_ duration: TimeInterval) -> String {
+        let seconds = max(1, Int(duration.rounded()))
+        return text(
+            "Done · \(seconds)s",
+            "已完成 · \(seconds) 秒"
+        )
+    }
+
+    static func failedIn(_ duration: TimeInterval) -> String {
+        let seconds = max(1, Int(duration.rounded()))
+        return text(
+            "Couldn’t complete · \(seconds)s",
+            "未能完成 · \(seconds) 秒"
+        )
+    }
 
     static func reasoningLabel(_ effort: String) -> String {
         switch effort {

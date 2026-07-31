@@ -2,6 +2,20 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.3 — 2026-07-31
+
+- Kept the active Codex task and app-server connection warm between Glosslet
+  turns instead of restarting them before every request.
+- Coalesced simultaneous startup and model-catalog requests onto one Codex
+  app-server connection.
+- Reloaded persistent history only after the Codex app may have changed the
+  task from another process.
+- Split connection, task-refresh, thinking, and response-writing activity into
+  accurate stages with live elapsed time and final request duration.
+- Removed the clipped rectangular shadow around the rounded selection toolbar.
+- Added deterministic toolbar previewing and optional Developer ID signing and
+  notarization support for release builds.
+
 ## 0.2.2 — 2026-07-30
 
 - Latched the toolbar anchor when a selection is first observed so passive
