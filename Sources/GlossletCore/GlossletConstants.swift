@@ -5,13 +5,12 @@ public enum GlossletConstants {
     public static let executableName = "Glosslet"
     public static let bundleIdentifier = "com.winechord.glosslet"
     public static let clientName = "glosslet"
-    public static let appVersion = "0.2.5"
-    public static let buildNumber = "7"
+    public static let appVersion = "0.2.6"
+    public static let buildNumber = "8"
 
     public static let codexPathEnvironmentKey = "GLOSSLET_CODEX_PATH"
     public static let requestTimeoutSeconds: UInt64 = 20
     public static let maximumSelectionCharacters = 100_000
-    public static let proactiveCompactionInputTokens = 32_000
 
     public static let repositoryURL = URL(
         string: "https://github.com/WineChord/glosslet"

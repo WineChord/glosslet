@@ -72,16 +72,11 @@ final class ConversationController: ObservableObject {
     private var deltaFlushTask: Task<Void, Never>?
     private var attachmentTask: Task<String, Error>?
     private var attachingThreadID: String?
-    private var maintenanceTask: Task<Void, Never>?
-    private var compactionTimeoutTask: Task<Void, Never>?
     private var activeAssistantMessageID: UUID?
     private var pendingAssistantDelta = ""
     private var streamedItemIDs = Set<String>()
     private var requestStartedAt: Date?
     private var threadAttachment = ThreadAttachmentState()
-    private var compactionTurnID: String?
-    private var isCompacting = false
-    private var latestContextInputTokens = 0
     private var codexActivationObserver: NSObjectProtocol?
     private var catalogLoaded = false
     private var preferenceSubscriptions = Set<AnyCancellable>()
@@ -139,8 +134,6 @@ final class ConversationController: ObservableObject {
         operationTask?.cancel()
         deltaFlushTask?.cancel()
         attachmentTask?.cancel()
-        maintenanceTask?.cancel()
-        compactionTimeoutTask?.cancel()
         if let codexActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(
                 codexActivationObserver
@@ -184,7 +177,6 @@ final class ConversationController: ObservableObject {
                 guard !Task.isCancelled else {
                     return
                 }
-                scheduleContextMaintenanceIfNeeded()
             } catch {
                 // Launch preparation is opportunistic. The visible request
                 // path reports any error if the user invokes Glosslet.
@@ -318,7 +310,6 @@ final class ConversationController: ObservableObject {
 
     func explain(_ selection: SelectionSnapshot, forceNewTask: Bool = false) {
         operationTask?.cancel()
-        cancelScheduledContextMaintenance()
         self.selection = selection
         messages = []
         errorMessage = nil
@@ -337,7 +328,6 @@ final class ConversationController: ObservableObject {
             }
             do {
                 try SelectionValidator.validate(selection)
-                try await waitForContextMaintenance()
                 try ensureWorkspaceExists()
                 if !catalogLoaded {
                     await refreshModels(showErrors: false)
@@ -395,7 +385,6 @@ final class ConversationController: ObservableObject {
         }
 
         operationTask?.cancel()
-        cancelScheduledContextMaintenance()
         errorMessage = nil
         messages.append(
             ConversationMessage(role: .user, text: trimmed)
@@ -410,7 +399,6 @@ final class ConversationController: ObservableObject {
                 return
             }
             do {
-                try await waitForContextMaintenance()
                 try ensureWorkspaceExists()
                 let identifier: String
                 if let threadID {
@@ -635,92 +623,6 @@ final class ConversationController: ObservableObject {
         )
     }
 
-    private func waitForContextMaintenance() async throws {
-        cancelScheduledContextMaintenance()
-        guard isCompacting else {
-            return
-        }
-        updateAssistantActivity(L10n.optimizingTask)
-        while isCompacting {
-            try Task.checkCancellation()
-            try await Task.sleep(for: .milliseconds(50))
-        }
-    }
-
-    private func cancelScheduledContextMaintenance() {
-        maintenanceTask?.cancel()
-        maintenanceTask = nil
-    }
-
-    private func scheduleContextMaintenanceIfNeeded() {
-        guard
-            preferences.threadMode == .reuseFixed,
-            latestContextInputTokens
-                >= GlossletConstants.proactiveCompactionInputTokens,
-            let threadID,
-            threadID == preferences.fixedThreadID,
-            !isBusy,
-            activeTurnID == nil,
-            !isCompacting
-        else {
-            return
-        }
-
-        cancelScheduledContextMaintenance()
-        maintenanceTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .milliseconds(750))
-            } catch {
-                return
-            }
-            guard !Task.isCancelled, let self else {
-                return
-            }
-            maintenanceTask = nil
-            guard
-                !isBusy,
-                activeTurnID == nil,
-                !isCompacting,
-                self.threadID == threadID
-            else {
-                return
-            }
-            await beginContextMaintenance(threadID: threadID)
-        }
-    }
-
-    private func beginContextMaintenance(threadID: String) async {
-        isCompacting = true
-        compactionTurnID = nil
-        do {
-            try await client.compactThread(threadID: threadID)
-        } catch {
-            finishContextMaintenance()
-            return
-        }
-
-        compactionTimeoutTask?.cancel()
-        compactionTimeoutTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(45))
-            } catch {
-                return
-            }
-            guard !Task.isCancelled, let self, isCompacting else {
-                return
-            }
-            finishContextMaintenance()
-        }
-    }
-
-    private func finishContextMaintenance() {
-        compactionTimeoutTask?.cancel()
-        compactionTimeoutTask = nil
-        compactionTurnID = nil
-        isCompacting = false
-        latestContextInputTokens = 0
-    }
-
     private func obtainThread(
         forceNew: Bool,
         selection: SelectionSnapshot
@@ -941,19 +843,15 @@ final class ConversationController: ObservableObject {
             guard eventThreadID == threadID else {
                 return
             }
-            if isCompacting, activeTurnID == nil {
-                compactionTurnID = turnID
-                return
-            }
             activeTurnID = turnID
             updateAssistantActivity(L10n.thinking)
 
-        case .itemStarted(let eventThreadID, let turnID, let item):
+        case .itemStarted(let eventThreadID, _, let item):
             guard eventThreadID == threadID else {
                 return
             }
-            if item.type == "contextCompaction" || turnID == compactionTurnID {
-                compactionTurnID = turnID
+            if item.type == "contextCompaction" {
+                updateAssistantActivity(L10n.optimizingTask)
                 return
             }
             if item.type == "agentMessage" {
@@ -964,24 +862,21 @@ final class ConversationController: ObservableObject {
 
         case .agentMessageDelta(
             let eventThreadID,
-            let turnID,
+            _,
             let itemID,
             let delta
         ):
-            guard eventThreadID == threadID,
-                turnID != compactionTurnID
-            else {
+            guard eventThreadID == threadID else {
                 return
             }
             appendDelta(delta, itemID: itemID)
 
         case .itemCompleted(
             let eventThreadID,
-            let turnID,
+            _,
             let item
         ):
             guard eventThreadID == threadID,
-                turnID != compactionTurnID,
                 item.type == "agentMessage"
             else {
                 return
@@ -990,18 +885,11 @@ final class ConversationController: ObservableObject {
 
         case .turnCompleted(
             let eventThreadID,
-            let turnID,
+            _,
             let status,
             let eventError
         ):
             guard eventThreadID == threadID else {
-                return
-            }
-            if isCompacting,
-                turnID == compactionTurnID
-                    || (compactionTurnID == nil && activeTurnID == nil)
-            {
-                finishContextMaintenance()
                 return
             }
             finishStreamingMessage()
@@ -1024,24 +912,9 @@ final class ConversationController: ObservableObject {
                 errorMessage = eventError
             }
             requestStartedAt = nil
-            scheduleContextMaintenanceIfNeeded()
 
-        case .tokenUsageUpdated(
-            let eventThreadID,
-            _,
-            let inputTokens,
-            _
-        ):
-            guard
-                eventThreadID == threadID
-                    || eventThreadID == preferences.fixedThreadID
-            else {
-                return
-            }
-            latestContextInputTokens = inputTokens
-            if !isBusy {
-                scheduleContextMaintenanceIfNeeded()
-            }
+        case .tokenUsageUpdated:
+            break
 
         case .serverRequest(let request):
             pendingApproval = PendingApproval(
@@ -1057,7 +930,6 @@ final class ConversationController: ObservableObject {
 
         case .processTerminated(let details):
             threadAttachment.markProcessTerminated()
-            finishContextMaintenance()
             guard isBusy else {
                 return
             }
