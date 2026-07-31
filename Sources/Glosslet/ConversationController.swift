@@ -67,13 +67,21 @@ final class ConversationController: ObservableObject {
     private let client: CodexAppServerClient
     private let preferences: AppPreferences
     private var eventTask: Task<Void, Never>?
+    private var preparationTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
     private var deltaFlushTask: Task<Void, Never>?
+    private var attachmentTask: Task<String, Error>?
+    private var attachingThreadID: String?
+    private var maintenanceTask: Task<Void, Never>?
+    private var compactionTimeoutTask: Task<Void, Never>?
     private var activeAssistantMessageID: UUID?
     private var pendingAssistantDelta = ""
     private var streamedItemIDs = Set<String>()
     private var requestStartedAt: Date?
     private var threadAttachment = ThreadAttachmentState()
+    private var compactionTurnID: String?
+    private var isCompacting = false
+    private var latestContextInputTokens = 0
     private var codexActivationObserver: NSObjectProtocol?
     private var catalogLoaded = false
     private var preferenceSubscriptions = Set<AnyCancellable>()
@@ -127,8 +135,12 @@ final class ConversationController: ObservableObject {
 
     deinit {
         eventTask?.cancel()
+        preparationTask?.cancel()
         operationTask?.cancel()
         deltaFlushTask?.cancel()
+        attachmentTask?.cancel()
+        maintenanceTask?.cancel()
+        compactionTimeoutTask?.cancel()
         if let codexActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(
                 codexActivationObserver
@@ -137,8 +149,46 @@ final class ConversationController: ObservableObject {
     }
 
     func prepare() {
-        Task { [weak self] in
-            await self?.refreshModels(showErrors: false)
+        preparationTask?.cancel()
+        preparationTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+            do {
+                try ensureWorkspaceExists()
+                await refreshModels(showErrors: false)
+                var prewarmThreadID: String?
+                if preferences.threadMode == .reuseFixed,
+                    let storedThreadID = preferences.fixedThreadID
+                {
+                    do {
+                        let identifier = try await attachThread(
+                            id: storedThreadID
+                        )
+                        guard !Task.isCancelled else {
+                            return
+                        }
+                        threadID = identifier
+                        prewarmThreadID = identifier
+                    } catch let error as AppServerProtocolError {
+                        if Self.isMissingThread(error) {
+                            preferences.resetFixedThread()
+                        }
+                    }
+                }
+                await client.prewarmRuntime(
+                    workingDirectory:
+                        GlossletConstants.defaultWorkspaceURL,
+                    threadID: prewarmThreadID
+                )
+                guard !Task.isCancelled else {
+                    return
+                }
+                scheduleContextMaintenanceIfNeeded()
+            } catch {
+                // Launch preparation is opportunistic. The visible request
+                // path reports any error if the user invokes Glosslet.
+            }
         }
     }
 
@@ -165,6 +215,13 @@ final class ConversationController: ObservableObject {
                         effort: "high",
                         description: "Deeper reasoning"
                     ),
+                ],
+                serviceTiers: [
+                    CodexServiceTier(
+                        id: "priority",
+                        name: "Fast",
+                        description: "Priority processing"
+                    )
                 ]
             )
         ]
@@ -179,7 +236,8 @@ final class ConversationController: ObservableObject {
         currentChoice = ModelChoice(
             model: "gpt-5.6-sol",
             displayName: "GPT-5.6-Sol",
-            reasoningEffort: "low"
+            reasoningEffort: "low",
+            serviceTier: "priority"
         )
         threadID = nil
         activeTurnID = nil
@@ -260,6 +318,7 @@ final class ConversationController: ObservableObject {
 
     func explain(_ selection: SelectionSnapshot, forceNewTask: Bool = false) {
         operationTask?.cancel()
+        cancelScheduledContextMaintenance()
         self.selection = selection
         messages = []
         errorMessage = nil
@@ -278,6 +337,7 @@ final class ConversationController: ObservableObject {
             }
             do {
                 try SelectionValidator.validate(selection)
+                try await waitForContextMaintenance()
                 try ensureWorkspaceExists()
                 if !catalogLoaded {
                     await refreshModels(showErrors: false)
@@ -311,6 +371,7 @@ final class ConversationController: ObservableObject {
                     text: prompt,
                     model: currentChoice.model,
                     reasoningEffort: currentChoice.reasoningEffort,
+                    serviceTier: currentChoice.serviceTier,
                     workingDirectory:
                         GlossletConstants.defaultWorkspaceURL
                 )
@@ -334,6 +395,7 @@ final class ConversationController: ObservableObject {
         }
 
         operationTask?.cancel()
+        cancelScheduledContextMaintenance()
         errorMessage = nil
         messages.append(
             ConversationMessage(role: .user, text: trimmed)
@@ -348,6 +410,7 @@ final class ConversationController: ObservableObject {
                 return
             }
             do {
+                try await waitForContextMaintenance()
                 try ensureWorkspaceExists()
                 let identifier: String
                 if let threadID {
@@ -377,6 +440,7 @@ final class ConversationController: ObservableObject {
                     text: trimmed,
                     model: currentChoice.model,
                     reasoningEffort: currentChoice.reasoningEffort,
+                    serviceTier: currentChoice.serviceTier,
                     workingDirectory:
                         GlossletConstants.defaultWorkspaceURL
                 )
@@ -458,6 +522,10 @@ final class ConversationController: ObservableObject {
 
     var activeModelPolicy: ModelPolicy {
         preferences.modelPolicy
+    }
+
+    var usesPriorityService: Bool {
+        currentChoice.serviceTier == "priority"
     }
 
     var selectedModel: CodexModel? {
@@ -567,6 +635,92 @@ final class ConversationController: ObservableObject {
         )
     }
 
+    private func waitForContextMaintenance() async throws {
+        cancelScheduledContextMaintenance()
+        guard isCompacting else {
+            return
+        }
+        updateAssistantActivity(L10n.optimizingTask)
+        while isCompacting {
+            try Task.checkCancellation()
+            try await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
+    private func cancelScheduledContextMaintenance() {
+        maintenanceTask?.cancel()
+        maintenanceTask = nil
+    }
+
+    private func scheduleContextMaintenanceIfNeeded() {
+        guard
+            preferences.threadMode == .reuseFixed,
+            latestContextInputTokens
+                >= GlossletConstants.proactiveCompactionInputTokens,
+            let threadID,
+            threadID == preferences.fixedThreadID,
+            !isBusy,
+            activeTurnID == nil,
+            !isCompacting
+        else {
+            return
+        }
+
+        cancelScheduledContextMaintenance()
+        maintenanceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(750))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            maintenanceTask = nil
+            guard
+                !isBusy,
+                activeTurnID == nil,
+                !isCompacting,
+                self.threadID == threadID
+            else {
+                return
+            }
+            await beginContextMaintenance(threadID: threadID)
+        }
+    }
+
+    private func beginContextMaintenance(threadID: String) async {
+        isCompacting = true
+        compactionTurnID = nil
+        do {
+            try await client.compactThread(threadID: threadID)
+        } catch {
+            finishContextMaintenance()
+            return
+        }
+
+        compactionTimeoutTask?.cancel()
+        compactionTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(45))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self, isCompacting else {
+                return
+            }
+            finishContextMaintenance()
+        }
+    }
+
+    private func finishContextMaintenance() {
+        compactionTimeoutTask?.cancel()
+        compactionTimeoutTask = nil
+        compactionTurnID = nil
+        isCompacting = false
+        latestContextInputTokens = 0
+    }
+
     private func obtainThread(
         forceNew: Bool,
         selection: SelectionSnapshot
@@ -587,6 +741,7 @@ final class ConversationController: ObservableObject {
 
         let identifier = try await client.startThread(
             model: currentChoice.model,
+            serviceTier: currentChoice.serviceTier,
             workingDirectory: GlossletConstants.defaultWorkspaceURL,
             persistent: true
         )
@@ -607,26 +762,51 @@ final class ConversationController: ObservableObject {
 
     private func attachThread(id threadID: String) async throws -> String {
         let action = threadAttachment.action(for: threadID)
-        let identifier: String
-        switch action {
-        case .reuse:
+        guard action != .reuse else {
             return threadID
-
-        case .resume:
-            identifier = try await client.resumeThread(
-                id: threadID,
-                model: currentChoice.model,
-                workingDirectory: GlossletConstants.defaultWorkspaceURL
-            )
-
-        case .reload:
-            threadAttachment.markProcessTerminated()
-            identifier = try await client.reloadThreadFromDisk(
-                id: threadID,
-                model: currentChoice.model,
-                workingDirectory: GlossletConstants.defaultWorkspaceURL
-            )
         }
+
+        if attachingThreadID == threadID, let attachmentTask {
+            let identifier = try await attachmentTask.value
+            threadAttachment.markAttached(identifier)
+            return identifier
+        }
+
+        if action == .reload {
+            threadAttachment.markProcessTerminated()
+        }
+        let choice = currentChoice
+        let task = Task { [client] in
+            switch action {
+            case .reuse:
+                return threadID
+            case .resume:
+                return try await client.resumeThread(
+                    id: threadID,
+                    model: choice.model,
+                    serviceTier: choice.serviceTier,
+                    workingDirectory:
+                        GlossletConstants.defaultWorkspaceURL
+                )
+            case .reload:
+                return try await client.reloadThreadFromDisk(
+                    id: threadID,
+                    model: choice.model,
+                    serviceTier: choice.serviceTier,
+                    workingDirectory:
+                        GlossletConstants.defaultWorkspaceURL
+                )
+            }
+        }
+        attachingThreadID = threadID
+        attachmentTask = task
+        defer {
+            if attachingThreadID == threadID {
+                attachingThreadID = nil
+                attachmentTask = nil
+            }
+        }
+        let identifier = try await task.value
         threadAttachment.markAttached(identifier)
         return identifier
     }
@@ -761,11 +941,19 @@ final class ConversationController: ObservableObject {
             guard eventThreadID == threadID else {
                 return
             }
+            if isCompacting, activeTurnID == nil {
+                compactionTurnID = turnID
+                return
+            }
             activeTurnID = turnID
             updateAssistantActivity(L10n.thinking)
 
-        case .itemStarted(let eventThreadID, _, let item):
+        case .itemStarted(let eventThreadID, let turnID, let item):
             guard eventThreadID == threadID else {
+                return
+            }
+            if item.type == "contextCompaction" || turnID == compactionTurnID {
+                compactionTurnID = turnID
                 return
             }
             if item.type == "agentMessage" {
@@ -776,21 +964,24 @@ final class ConversationController: ObservableObject {
 
         case .agentMessageDelta(
             let eventThreadID,
-            _,
+            let turnID,
             let itemID,
             let delta
         ):
-            guard eventThreadID == threadID else {
+            guard eventThreadID == threadID,
+                turnID != compactionTurnID
+            else {
                 return
             }
             appendDelta(delta, itemID: itemID)
 
         case .itemCompleted(
             let eventThreadID,
-            _,
+            let turnID,
             let item
         ):
             guard eventThreadID == threadID,
+                turnID != compactionTurnID,
                 item.type == "agentMessage"
             else {
                 return
@@ -799,11 +990,18 @@ final class ConversationController: ObservableObject {
 
         case .turnCompleted(
             let eventThreadID,
-            _,
+            let turnID,
             let status,
             let eventError
         ):
             guard eventThreadID == threadID else {
+                return
+            }
+            if isCompacting,
+                turnID == compactionTurnID
+                    || (compactionTurnID == nil && activeTurnID == nil)
+            {
+                finishContextMaintenance()
                 return
             }
             finishStreamingMessage()
@@ -826,6 +1024,24 @@ final class ConversationController: ObservableObject {
                 errorMessage = eventError
             }
             requestStartedAt = nil
+            scheduleContextMaintenanceIfNeeded()
+
+        case .tokenUsageUpdated(
+            let eventThreadID,
+            _,
+            let inputTokens,
+            _
+        ):
+            guard
+                eventThreadID == threadID
+                    || eventThreadID == preferences.fixedThreadID
+            else {
+                return
+            }
+            latestContextInputTokens = inputTokens
+            if !isBusy {
+                scheduleContextMaintenanceIfNeeded()
+            }
 
         case .serverRequest(let request):
             pendingApproval = PendingApproval(
@@ -841,6 +1057,7 @@ final class ConversationController: ObservableObject {
 
         case .processTerminated(let details):
             threadAttachment.markProcessTerminated()
+            finishContextMaintenance()
             guard isBusy else {
                 return
             }

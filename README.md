@@ -49,15 +49,21 @@ either place. Glosslet never uses hidden or ephemeral threads.
   conversation should remain above other apps.
 - Supports follow-ups, stopping a turn, approvals, and opening the exact task
   in the Codex app.
-- Keeps the active task warm for faster consecutive explanations and reloads
-  persistent history after the Codex app may have changed it.
+- Restores the fixed task and prewarms Codex skills, hooks, and MCP metadata
+  when Glosslet launches, then keeps that task attached for fast consecutive
+  explanations.
+- Uses Codex's own context compaction when a long-running fixed task grows
+  large, preserving the task and its visible history while keeping later turns
+  responsive. Native compaction is a Codex model operation and consumes usage.
 - Distinguishes connection, task refresh, model thinking, and response writing,
   with live elapsed time instead of an indefinite generic spinner.
 - Reuses one fixed Codex task by default, or creates a new task for every
   explanation.
 - Dynamically selects Codex's latest default model at its lowest advertised
-  reasoning effort. Model and reasoning controls are available directly in the
-  floating conversation; you can also inherit Codex defaults.
+  reasoning effort and uses its priority service tier when the model advertises
+  one. Priority processing is faster but consumes more Codex usage. Model and
+  reasoning controls are available directly in the floating conversation; you
+  can also choose Codex defaults.
 - Uses the installed Codex app server, sign-in, configuration, skills, MCP
   connections, sandbox, and approval policy.
 - Keeps **Copy** entirely local. Selected text is sent only after you click
@@ -152,7 +158,11 @@ Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅
 自动隐藏；需要边工作边查看时，可以点击标题栏中的固定按钮。
 
 默认配置会动态选择 Codex 当前最新的默认模型，并使用该模型支持的最低推理程度；
-悬浮窗顶部可以直接切换模型与推理强度，也可以改为完全沿用 Codex 默认值。
+如果模型目录提供优先服务层，还会默认启用“极速”处理。极速处理更快，但会增加
+Codex 额度消耗。悬浮窗顶部可以直接切换模型与推理强度，也可以改为完全沿用
+Codex 默认值。Glosslet 启动时会在后台恢复固定任务并预热 Codex 运行环境；固定
+任务上下文变长后，则使用 Codex 原生压缩保持后续响应速度，任务 ID 和可见历史
+不会因此丢失。原生压缩本身也是一次 Codex 模型操作，会消耗相应额度。
 
 本地重新构建会改变临时签名。如果系统设置中的 Glosslet 开关看似已开启，但应用
 仍未识别，请先关闭再重新开启；如果仍无效，请移除旧条目后重新添加当前的

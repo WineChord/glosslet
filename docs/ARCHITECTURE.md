@@ -79,12 +79,16 @@ consecutive Glosslet turns. The transcript reports connection, history refresh,
 reasoning, and response-writing stages separately and derives elapsed time from
 the original request timestamp. Concurrent startup callers share one connection
 task so onboarding, model discovery, and an immediate selection cannot race
-multiple app-server processes.
+multiple app-server processes. Launch preparation also restores the saved fixed
+task and asks app-server to populate its cached skill, hook, and MCP metadata.
+This moves deterministic environment discovery off the first visible request
+without sending a model turn.
 
 ## Persistent task invariant
 
-Every new task uses `thread/start` with `ephemeral: false`. Glosslet never calls
-thread deletion or archival APIs. The default mode stores one task ID in
+Every new task uses `thread/start` with `ephemeral: false`. Production Glosslet
+never deletes or archives a user task; the opt-in integration harness archives
+only the disposable tasks it creates. The default mode stores one task ID in
 `UserDefaults` and resumes it for later explanations. Per-explanation mode
 starts a separate persistent task each time.
 
@@ -96,6 +100,13 @@ app-server and reloads the persistent task from disk before the next request
 only in that case. This preserves cross-process history without imposing a cold
 start on every explanation.
 
+App-server reports the latest turn's context usage. When the fixed task crosses
+a conservative input-token threshold while idle, Glosslet starts Codex's native
+`thread/compact/start` operation. Compaction keeps the same persistent task and
+rollout history while replacing the model's working context with a compact
+summary. A user request always takes precedence over scheduled maintenance.
+Native compaction is itself a Codex model operation and consumes usage.
+
 ## Model policy
 
 The app calls `model/list` instead of hard-coding a version. The default policy:
@@ -103,9 +114,11 @@ The app calls `model/list` instead of hard-coding a version. The default policy:
 1. Ignore hidden and review-only entries.
 2. Prefer the visible model marked as the current Codex default.
 3. Select the lowest reasoning effort advertised by that model.
+4. Select the `priority` service tier when that model advertises it.
 
-Users may instead omit both overrides to inherit Codex defaults, or select a
-specific visible model and supported effort.
+Users may instead select Codex defaults, or select a specific visible model and
+supported effort. The model picker identifies priority mode and notes that it
+increases Codex usage.
 
 ## Storage
 

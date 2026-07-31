@@ -79,6 +79,10 @@ enum L10n {
         "Refreshing Codex task…",
         "正在刷新 Codex 任务…"
     )
+    static let optimizingTask = text(
+        "Optimizing Codex task…",
+        "正在优化 Codex 任务…"
+    )
     static let thinking = text("Codex is thinking…", "Codex 正在思考…")
     static let writingResponse = text(
         "Codex is writing…",
@@ -139,6 +143,11 @@ enum L10n {
     static let unofficial = text(
         "Glosslet is an open-source, unofficial companion for Codex.",
         "Glosslet 是一个开源、非官方的 Codex 辅助工具。"
+    )
+    static let fastMode = text("Fast", "极速")
+    static let fastModeDescription = text(
+        "Priority processing · increased usage",
+        "优先处理 · 会增加额度消耗"
     )
 
     static func completedIn(_ duration: TimeInterval) -> String {
