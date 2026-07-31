@@ -140,13 +140,20 @@ GLOSSLET_RUN_CODEX_INTEGRATION=1 \
 
 ## How persistence works
 
-Glosslet launches `codex app-server` from the user's existing Codex
-installation. It creates threads with `ephemeral: false`, gives them recognizable
-`Glosslet — …` titles, and stores the fixed task identifier locally for reuse.
-Consecutive Glosslet turns reuse the live task without another process restart.
-When the Codex app is opened, Glosslet marks the task for a disk refresh before
-the next turn so independently added history is restored. The floating panel's
-**Open Codex** button deep-links to that exact task.
+Glosslet first connects to the authenticated, persistent Codex App Server
+control socket when the Codex app has one running. This reuses the live Codex
+sign-in instead of copying credentials or spawning an unauthenticated process.
+If no control socket is available, Glosslet launches `codex app-server` from
+the user's existing installation and uses that installation's own sign-in
+state. If it is not authenticated, Glosslet reports that before sending a model
+request.
+
+Threads are created with `ephemeral: false`, receive recognizable
+`Glosslet — …` titles, and keep their fixed task identifier locally for reuse.
+Consecutive turns stay attached to the live task. When the Codex app is opened,
+Glosslet marks the task for a history refresh before the next turn so changes
+from either surface are retained. The floating panel's **Open Codex** button
+deep-links to that exact task.
 
 No API key is stored by Glosslet, and no separate chat database is created.
 See [Architecture](docs/ARCHITECTURE.md) for the protocol flow.

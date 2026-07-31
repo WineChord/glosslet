@@ -8,6 +8,50 @@ public enum CodexBinaryLocator {
         )
     }
 
+    public static func findControlSocket() -> URL? {
+        findControlSocket(
+            environment: ProcessInfo.processInfo.environment,
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
+    }
+
+    static func findControlSocket(
+        environment: [String: String],
+        homeDirectory: URL,
+        fileManager: FileManager = .default,
+        socketAvailable: ((String) -> Bool)? = nil
+    ) -> URL? {
+        let codexHome: URL
+        if let configuredHome = environment["CODEX_HOME"],
+            !configuredHome.isEmpty
+        {
+            codexHome = URL(fileURLWithPath: configuredHome)
+        } else {
+            codexHome = homeDirectory.appendingPathComponent(
+                ".codex",
+                isDirectory: true
+            )
+        }
+        let socket =
+            codexHome
+            .appendingPathComponent("app-server-control", isDirectory: true)
+            .appendingPathComponent("app-server-control.sock")
+        let isAvailable =
+            socketAvailable?(socket.path)
+            ?? {
+                guard
+                    let attributes = try? fileManager.attributesOfItem(
+                        atPath: socket.path
+                    ),
+                    let type = attributes[.type] as? FileAttributeType
+                else {
+                    return false
+                }
+                return type == .typeSocket
+            }()
+        return isAvailable ? socket : nil
+    }
+
     static func findBinary(
         environment: [String: String],
         homeDirectory: URL,

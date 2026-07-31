@@ -1,5 +1,6 @@
 import AppKit
 import GlossletCore
+import os
 
 @MainActor
 final class SelectionMonitor {
@@ -12,6 +13,11 @@ final class SelectionMonitor {
     private var pollingTimer: Timer?
     private var pendingProbe: DispatchWorkItem?
     private var anchorTracker = SelectionAnchorTracker()
+    private let logger = Logger(
+        subsystem: "com.winechord.glosslet",
+        category: "selection"
+    )
+    private var lastDiagnosticState: String?
 
     init(
         reader: AccessibilitySelectionReader =
@@ -128,13 +134,17 @@ final class SelectionMonitor {
         {
             return
         }
-        let selection = reader.currentSelection(anchorHint: anchorHint)
-        guard let selection else {
+        let readResult = reader.readSelection(anchorHint: anchorHint)
+        guard case .selection(let selection) = readResult else {
+            if case .unavailable(let failure) = readResult {
+                logFailureIfChanged(failure)
+            }
             if clearWhenEmpty {
                 clear()
             }
             return
         }
+        logSelectionIfChanged(selection)
         let fallbackPoint = anchorHint ?? NSEvent.mouseLocation
         let fallbackAnchor = CGRect(
             x: fallbackPoint.x,
@@ -156,6 +166,38 @@ final class SelectionMonitor {
     private func clear() {
         anchorTracker.clear()
         handler(nil)
+    }
+
+    private func logFailureIfChanged(
+        _ failure: AccessibilitySelectionReadFailure
+    ) {
+        let state = "unavailable:\(failure.rawValue)"
+        guard state != lastDiagnosticState else {
+            return
+        }
+        lastDiagnosticState = state
+        logger.notice("Selection unavailable: \(failure.rawValue, privacy: .public)")
+    }
+
+    private func logSelectionIfChanged(_ selection: SelectionSnapshot) {
+        let rangeDescription =
+            selection.selectionRange.map {
+                "\($0.location):\($0.length)"
+            } ?? "unknown"
+        let state = [
+            "selection",
+            String(selection.sourceProcessIdentifier),
+            String(selection.sourceElementIdentifier ?? 0),
+            rangeDescription,
+            String(selection.text.count),
+        ].joined(separator: ":")
+        guard state != lastDiagnosticState else {
+            return
+        }
+        lastDiagnosticState = state
+        logger.notice(
+            "Selection captured from \(selection.sourceApplicationName, privacy: .public), length \(selection.text.count), anchor \(String(describing: selection.anchorBounds), privacy: .public)"
+        )
     }
 
     private static func isSelectionKey(_ event: NSEvent) -> Bool {

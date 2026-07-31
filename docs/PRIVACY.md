@@ -24,8 +24,9 @@ Only after the user clicks **Explain**, Glosslet sends:
 - the source application's display name; and
 - later follow-up messages entered in the floating panel.
 
-This data travels through the user's installed `codex app-server` and existing
-Codex authentication. Glosslet does not receive or store an API key.
+This data travels through the user's installed Codex App Server and existing
+Codex authentication. Glosslet prefers the owner-only local control socket and
+does not read, copy, receive, or store the user's access token or API key.
 
 ## Conversation history
 
