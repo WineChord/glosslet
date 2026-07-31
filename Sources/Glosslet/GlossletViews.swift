@@ -103,12 +103,16 @@ struct ConversationView: View {
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().opacity(0.45)
-            content
-            Divider().opacity(0.45)
-            composer
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                header
+                Divider().opacity(0.45)
+                content
+                Divider().opacity(0.45)
+                composer
+            }
+
+            configurationOverlay
         }
         .frame(minWidth: 430, idealWidth: 490, minHeight: 500)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -195,25 +199,43 @@ struct ConversationView: View {
                 Spacer(minLength: 4)
             }
             .padding(.horizontal, 16)
-            .padding(
-                .bottom,
-                configurationMenu == nil ? 10 : 8
-            )
-
-            if let configurationMenu {
-                configurationDrawer(for: configurationMenu)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 10)
-                    .transition(
-                        .move(edge: .top).combined(with: .opacity)
-                    )
-            }
+            .padding(.bottom, 10)
         }
         .background(Color.primary.opacity(0.018))
-        .animation(
-            .easeOut(duration: 0.14),
-            value: configurationMenu
-        )
+    }
+
+    @ViewBuilder
+    private var configurationOverlay: some View {
+        if let configurationMenu {
+            Color.black.opacity(0.001)
+                .contentShape(Rectangle())
+                .padding(.top, 90)
+                .onTapGesture {
+                    dismissConfigurationMenu()
+                }
+                .zIndex(1)
+
+            configurationDrawer(for: configurationMenu)
+                .padding(.horizontal, 16)
+                .padding(.top, 98)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .top
+                )
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(
+                            with: .scale(
+                                scale: 0.985,
+                                anchor: .top
+                            )
+                        ),
+                        removal: .opacity
+                    )
+                )
+                .zIndex(2)
+        }
     }
 
     private var content: some View {
@@ -345,7 +367,25 @@ struct ConversationView: View {
     }
 
     private func toggleConfigurationMenu(_ menu: ConfigurationMenu) {
-        configurationMenu = configurationMenu == menu ? nil : menu
+        if configurationMenu == menu {
+            dismissConfigurationMenu()
+        } else if configurationMenu == nil {
+            withAnimation(.easeOut(duration: 0.16)) {
+                configurationMenu = menu
+            }
+        } else {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                configurationMenu = menu
+            }
+        }
+    }
+
+    private func dismissConfigurationMenu() {
+        withAnimation(.easeOut(duration: 0.12)) {
+            configurationMenu = nil
+        }
     }
 
     @ViewBuilder
@@ -356,12 +396,12 @@ struct ConversationView: View {
         case .model:
             ModelSelectionDrawer(
                 conversation: conversation,
-                onDismiss: { configurationMenu = nil }
+                onDismiss: dismissConfigurationMenu
             )
         case .reasoning:
             ReasoningSelectionDrawer(
                 conversation: conversation,
-                onDismiss: { configurationMenu = nil }
+                onDismiss: dismissConfigurationMenu
             )
         }
     }
@@ -390,7 +430,7 @@ private struct ModelSelectionControl: View {
                     : nil
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SelectorControlButtonStyle())
         .disabled(conversation.isBusy)
         .help(
             conversation.usesPriorityService
@@ -423,7 +463,7 @@ private struct ReasoningSelectionControl: View {
                 isExpanded: isExpanded
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SelectorControlButtonStyle())
         .disabled(
             conversation.isBusy
                 || conversation.reasoningOptions.isEmpty
@@ -662,12 +702,14 @@ private struct SelectorPill: View {
                     .accessibilityHidden(true)
             }
             Spacer(minLength: 2)
-            Image(
-                systemName:
-                    isExpanded ? "chevron.up" : "chevron.down"
-            )
-            .font(.system(size: 8, weight: .semibold))
-            .foregroundStyle(.tertiary)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                .animation(
+                    .easeOut(duration: 0.14),
+                    value: isExpanded
+                )
         }
         .padding(.horizontal, 9)
         .frame(width: width, height: 30)
@@ -680,6 +722,18 @@ private struct SelectorPill: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .strokeBorder(GlossletPalette.subtleBorder)
         }
+    }
+}
+
+private struct SelectorControlButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .scaleEffect(configuration.isPressed ? 0.992 : 1)
+            .animation(
+                .easeOut(duration: 0.08),
+                value: configuration.isPressed
+            )
     }
 }
 
