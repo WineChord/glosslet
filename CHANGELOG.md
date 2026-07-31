@@ -2,6 +2,22 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.7 — 2026-07-31
+
+- Added a durable permission monitor shared by onboarding, Settings, the menu
+  bar, and selection handling, so Accessibility changes are reflected without
+  restarting Glosslet.
+- Made the successful setup state explicit and clarified that closing the
+  window leaves Glosslet running in the menu bar.
+- Restores the main window whenever an already-running Glosslet is opened
+  again, and temporarily shows the app in the Dock while setup or Settings is
+  visible.
+- Added a scoped repair action that resets only Glosslet's stale Accessibility
+  entry before reopening the correct macOS settings page.
+- Signed release assets with a stable project identity so later updates can
+  preserve Accessibility authorization after the one-time v0.2.7 migration.
+- Added an automated, identity-verified GitHub tag release workflow.
+
 ## 0.2.6 — 2026-07-31
 
 - Removed Glosslet's app-level 32k proactive-compaction threshold and its

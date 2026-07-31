@@ -26,6 +26,7 @@ final class ConversationPresentationState: ObservableObject {
 final class PanelCoordinator: NSObject, NSWindowDelegate {
     private let conversation: ConversationController
     private let preferences: AppPreferences
+    private let permissionMonitor: AccessibilityPermissionMonitor
     private let presentation = ConversationPresentationState()
     private var toolbarPanel: NonactivatingToolbarPanel?
     private var conversationPanel: ConversationPanel?
@@ -40,10 +41,12 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
 
     init(
         conversation: ConversationController,
-        preferences: AppPreferences
+        preferences: AppPreferences,
+        permissionMonitor: AccessibilityPermissionMonitor
     ) {
         self.conversation = conversation
         self.preferences = preferences
+        self.permissionMonitor = permissionMonitor
         super.init()
         presentation.onPinChanged = { [weak self] _ in
             self?.updateConversationDismissalBehavior()
@@ -160,6 +163,8 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
 
     func showSettings() {
         let window = settingsWindow ?? makeSettingsWindow()
+        onboardingWindow?.orderOut(nil)
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -167,16 +172,35 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
 
     func showOnboarding() {
         let window = onboardingWindow ?? makeOnboardingWindow()
+        settingsWindow?.orderOut(nil)
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
 
+    func showMainWindow() {
+        permissionMonitor.refresh()
+        if !preferences.completedOnboarding || !permissionMonitor.isTrusted {
+            showOnboarding()
+        } else {
+            showSettings()
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
-        guard notification.object as? NSWindow === conversationPanel else {
+        guard let window = notification.object as? NSWindow else {
             return
         }
-        stopOutsideClickMonitoring()
+        if window === conversationPanel {
+            stopOutsideClickMonitoring()
+            return
+        }
+        if window === settingsWindow || window === onboardingWindow {
+            DispatchQueue.main.async { [weak self] in
+                self?.restoreMenuBarActivationPolicy()
+            }
+        }
     }
 
     private func explainCurrentSelection() {
@@ -400,9 +424,11 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(
             rootView: SettingsView(
                 preferences: preferences,
-                conversation: conversation
+                conversation: conversation,
+                permissionMonitor: permissionMonitor
             )
         )
+        window.delegate = self
         settingsWindow = window
         return window
     }
@@ -421,11 +447,13 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(
             rootView: OnboardingView(
                 preferences: preferences,
+                permissionMonitor: permissionMonitor,
                 onFinish: { [weak window] in
                     window?.close()
                 }
             )
         )
+        window.delegate = self
         onboardingWindow = window
         return window
     }
@@ -433,5 +461,14 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
     private func screen(containing rect: CGRect) -> NSScreen? {
         NSScreen.screens.first { $0.frame.intersects(rect) }
             ?? NSScreen.main
+    }
+
+    private func restoreMenuBarActivationPolicy() {
+        guard settingsWindow?.isVisible != true,
+            onboardingWindow?.isVisible != true
+        else {
+            return
+        }
+        NSApp.setActivationPolicy(.accessory)
     }
 }

@@ -11,6 +11,7 @@
 <p align="center">
   <a href="LICENSE">MIT License</a> ·
   <a href="docs/PRIVACY.md">Privacy</a> ·
+  <a href="docs/SIGNING.md">Signing</a> ·
   <a href="docs/ARCHITECTURE.md">Architecture</a> ·
   <a href="THIRD_PARTY_NOTICES.md">Third-party notices</a>
 </p>
@@ -94,13 +95,20 @@ scripts/build_app.sh release
 open dist/Glosslet.app
 ```
 
-The default local build is ad-hoc signed. On first launch, use Glosslet's onboarding to
-open **System Settings → Privacy & Security → Accessibility**, then enable
-Glosslet. Rebuilding changes an ad-hoc signature, so macOS may require local
-developers to grant that permission again. System Settings can leave the old
-entry looking enabled even though it no longer matches the rebuilt app. Turn
-Glosslet off and on; if it is still not recognized, remove the old entry and
-add the current `dist/Glosslet.app`.
+The default local build is ad-hoc signed. On first launch, use Glosslet's
+onboarding to open **System Settings → Privacy & Security → Accessibility**,
+then enable Glosslet. Rebuilding changes an ad-hoc signature, so macOS may
+require local developers to grant that permission again. If System Settings
+keeps a stale enabled entry, use onboarding's **Repair stale permission
+entry…** action before enabling the current app.
+
+Starting with v0.2.7, official GitHub release assets use one stable,
+self-signed project identity. The v0.2.7 upgrade requires one fresh
+Accessibility grant because it migrates away from the earlier ad-hoc identity;
+later project-signed updates installed at the same path can preserve that
+grant. Self-signing is free, but it does not provide Apple notarization or
+remove the unidentified-developer warning. See [Signing](docs/SIGNING.md) for
+the exact security and verification boundary.
 
 Release maintainers can provide a stable Apple code identity and optional
 notarization profile:
@@ -111,10 +119,10 @@ GLOSSLET_NOTARY_PROFILE="glosslet-notary" \
 scripts/package_release.sh
 ```
 
-A Developer ID-signed update keeps a stable designated requirement, so macOS
-can normally preserve Accessibility authorization across versions installed at
-the same path. The public package remains ad-hoc signed until the project has
-that certificate and notarization credential.
+A Developer ID-signed and notarized build keeps the stable requirement while
+also providing Apple's distribution trust. The existing project identity keeps
+permissions stable for free, but only a paid Apple Developer Program identity
+can remove that remaining distribution limitation.
 
 Run the full local validation:
 
@@ -161,13 +169,15 @@ Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅
 如果模型目录提供优先服务层，还会默认启用“极速”处理。极速处理更快，但会增加
 Codex 额度消耗。悬浮窗顶部可以直接切换模型与推理强度，也可以改为完全沿用
 Codex 默认值。Glosslet 启动时会在后台恢复固定任务并预热 Codex 运行环境；固定
-任务上下文变长后，则使用 Codex 原生压缩保持后续响应速度，任务 ID 和可见历史
-不会因此丢失。原生压缩本身也是一次 Codex 模型操作，会消耗相应额度。
+任务上下文变长后，由 Codex 自己负责上下文窗口管理、自动压缩与滚动；Glosslet
+不会另设 Token 阈值，也不会主动插入后台维护轮次。
 
 本地重新构建会改变临时签名。如果系统设置中的 Glosslet 开关看似已开启，但应用
-仍未识别，请先关闭再重新开启；如果仍无效，请移除旧条目后重新添加当前的
-`dist/Glosslet.app`。使用固定的 Developer ID 签名并在同一路径覆盖安装后，macOS
-通常可以在版本升级时继续沿用原有辅助功能授权；公开包目前仍是临时签名。
+仍未识别，可以在引导页点击“修复失效的权限条目…”，再授权当前应用。从 v0.2.7
+开始，GitHub 正式发布包使用固定的项目自签名身份；这次迁移需要重新授权一次，
+之后在相同路径覆盖升级时可以继续沿用授权。项目自签名完全免费，但不会获得
+Apple 公证；只有付费的 Apple Developer Program 与 Developer ID 才能消除这项
+公开分发限制。
 
 ## Contributing
 

@@ -28,6 +28,13 @@ selection's text range; passive polling can detect a different selection but
 cannot reposition the existing toolbar as the pointer moves or range geometry
 arrives later. Secure text fields and Glosslet's own process are ignored.
 
+One `AccessibilityPermissionMonitor` owns the live trust state used by
+onboarding, Settings, the menu-bar status, and selection handling. It refreshes
+on a short common-run-loop timer and immediately when Glosslet becomes active,
+so returning from System Settings does not require a process restart. The
+repair action runs `tccutil reset Accessibility com.winechord.glosslet`; it can
+remove only Glosslet's stale entry and cannot grant access by itself.
+
 The Accessibility coordinate system is converted per display before the panel
 is positioned. Both panels are available across Spaces and full-screen apps.
 
