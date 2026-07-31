@@ -32,14 +32,45 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var subscriptions = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let isRenderingPreview = ProcessInfo.processInfo.arguments.contains(
-            "--render-preview"
+        let arguments = ProcessInfo.processInfo.arguments
+        let isRenderingPreview = arguments.contains("--render-preview")
+        let isThinkingPreview = arguments.contains(
+            "--render-thinking-preview"
+        )
+        let isToolbarPreview = arguments.contains(
+            "--render-toolbar-preview"
         )
         configureStatusItem()
         bindPreferences()
 
-        if isRenderingPreview {
-            conversation.loadRenderingPreview()
+        if isToolbarPreview {
+            NSApp.setActivationPolicy(.regular)
+            let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
+            let anchor = CGRect(
+                x: visibleFrame.minX + min(300, visibleFrame.width / 2),
+                y: visibleFrame.maxY - min(180, visibleFrame.height / 3),
+                width: 1,
+                height: 18
+            )
+            panels.showToolbar(
+                for: SelectionSnapshot(
+                    text: "Glosslet toolbar preview",
+                    sourceApplicationName: "Glosslet Preview",
+                    sourceBundleIdentifier: nil,
+                    sourceProcessIdentifier:
+                        ProcessInfo.processInfo.processIdentifier,
+                    bounds: anchor,
+                    anchorBounds: anchor
+                )
+            )
+            NSApp.activate(ignoringOtherApps: true)
+        } else if isRenderingPreview || isThinkingPreview {
+            NSApp.setActivationPolicy(.regular)
+            if isThinkingPreview {
+                conversation.loadThinkingPreview()
+            } else {
+                conversation.loadRenderingPreview()
+            }
             let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
             panels.showConversation(
                 anchor: CGRect(
@@ -49,6 +80,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                     height: 1
                 )
             )
+            NSApp.activate(ignoringOtherApps: true)
         } else {
             selectionMonitor.start()
             conversation.prepare()

@@ -33,6 +33,7 @@ public actor CodexAppServerClient {
     private var nextRequestID = 1
     private var processGeneration = 0
     private var initialized = false
+    private var connectionTask: Task<Void, Error>?
     private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
     private var eventContinuations: [UUID: AsyncStream<AppServerEvent>.Continuation] =
         [:]
@@ -64,6 +65,32 @@ public actor CodexAppServerClient {
     }
 
     public func connect() async throws {
+        if process?.isRunning == true, initialized {
+            return
+        }
+
+        if let connectionTask {
+            try await connectionTask.value
+            return
+        }
+
+        let task = Task { [weak self] in
+            guard let self else {
+                throw AppServerProtocolError.processUnavailable
+            }
+            try await self.establishConnection()
+        }
+        connectionTask = task
+        do {
+            try await task.value
+            connectionTask = nil
+        } catch {
+            connectionTask = nil
+            throw error
+        }
+    }
+
+    private func establishConnection() async throws {
         if process?.isRunning == true, initialized {
             return
         }

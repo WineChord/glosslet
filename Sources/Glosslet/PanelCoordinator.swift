@@ -81,7 +81,10 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
                 self?.copyCurrentSelection()
             }
         )
-        panel.contentView = NSHostingView(rootView: view)
+        let hostingView = NSHostingView(rootView: view)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView = hostingView
 
         let size =
             panel.contentView?.fittingSize
@@ -94,7 +97,8 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             PanelPlacement.toolbarFrame(
                 anchor: anchor,
                 panelSize: size,
-                visibleFrame: visibleFrame
+                visibleFrame: visibleFrame,
+                contentInset: SelectionToolbarView.windowShadowInset
             ),
             display: false
         )

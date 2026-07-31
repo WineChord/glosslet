@@ -53,11 +53,18 @@ struct MarkdownTranscriptView: NSViewRepresentable {
                     id: $0.id.uuidString,
                     role: $0.role == .user ? "user" : "assistant",
                     text: $0.text,
-                    isStreaming: $0.isStreaming
+                    isStreaming: $0.isStreaming,
+                    activityText: $0.activityText,
+                    startedAtMilliseconds: $0.startedAt.map {
+                        Int64(
+                            ($0.timeIntervalSince1970 * 1_000).rounded()
+                        )
+                    }
                 )
             },
             labels: RenderLabels(
                 thinking: L10n.thinking,
+                elapsedSecondsSuffix: L10n.elapsedSecondsSuffix,
                 copyCode: L10n.copyCode,
                 copied: L10n.copied,
                 selectedFrom: L10n.selectedFrom,
@@ -101,10 +108,13 @@ struct MarkdownTranscriptView: NSViewRepresentable {
         let role: String
         let text: String
         let isStreaming: Bool
+        let activityText: String?
+        let startedAtMilliseconds: Int64?
     }
 
     fileprivate struct RenderLabels: Encodable {
         let thinking: String
+        let elapsedSecondsSuffix: String
         let copyCode: String
         let copied: String
         let selectedFrom: String

@@ -7,6 +7,7 @@
   const renderKeys = new Map();
   let labels = {
     thinking: "Codex is thinking…",
+    elapsedSecondsSuffix: "s",
     copyCode: "Copy",
     copied: "Copied",
     selectedFrom: "Selected from",
@@ -293,8 +294,37 @@
     return article;
   }
 
+  function updateThinkingLabel(element) {
+    const text = element.querySelector(".thinking-label");
+    if (!text) {
+      return;
+    }
+    const activity = element.dataset.activity || labels.thinking;
+    const startedAt = Number(element.dataset.startedAt);
+    if (!Number.isFinite(startedAt) || startedAt <= 0) {
+      text.textContent = activity;
+      return;
+    }
+    const elapsed = Math.max(
+      0,
+      Math.floor((Date.now() - startedAt) / 1000)
+    );
+    const cleanActivity = activity.replace(/…$/, "");
+    text.textContent =
+      `${cleanActivity} · ${elapsed}${labels.elapsedSecondsSuffix}`;
+  }
+
+  function updateThinkingLabels() {
+    transcript.querySelectorAll(".thinking").forEach(updateThinkingLabel);
+  }
+
   function updateMessage(element, message) {
-    const nextKey = `${message.text}\u0000${message.isStreaming}`;
+    const nextKey = [
+      message.text,
+      message.isStreaming,
+      message.activityText || "",
+      message.startedAtMilliseconds || "",
+    ].join("\u0000");
     if (renderKeys.get(message.id) === nextKey) {
       return;
     }
@@ -308,12 +338,17 @@
       body.innerHTML = "";
       const thinking = document.createElement("div");
       thinking.className = "thinking";
+      thinking.dataset.activity = message.activityText || labels.thinking;
+      if (message.startedAtMilliseconds) {
+        thinking.dataset.startedAt = String(message.startedAtMilliseconds);
+      }
       thinking.innerHTML =
         '<span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
       const text = document.createElement("span");
-      text.textContent = labels.thinking;
+      text.className = "thinking-label";
       thinking.appendChild(text);
       body.appendChild(thinking);
+      updateThinkingLabel(thinking);
       return;
     }
 
@@ -388,6 +423,7 @@
   });
 
   window.glosslet = { render };
+  window.setInterval(updateThinkingLabels, 1000);
   window.webkit?.messageHandlers?.rendererReady?.postMessage(true);
   } catch (error) {
     const fallback = document.getElementById("transcript");

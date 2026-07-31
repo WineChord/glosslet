@@ -441,6 +441,7 @@ td:last-child {
   align-items: center;
   color: var(--secondary);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .thinking-dots {
@@ -464,7 +465,7 @@ td:last-child {
   animation-delay: 0.28s;
 }
 
-.message.streaming .message-body > :last-child::after {
+.message.streaming .message-body > :last-child:not(.thinking)::after {
   display: inline-block;
   width: 5px;
   height: 1.05em;

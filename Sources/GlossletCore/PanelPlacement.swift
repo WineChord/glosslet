@@ -6,7 +6,38 @@ public enum PanelPlacement {
         anchor: CGRect,
         panelSize: CGSize,
         visibleFrame: CGRect,
-        gap: CGFloat = 8
+        gap: CGFloat = 8,
+        contentInset: CGFloat = 0
+    ) -> CGRect {
+        let inset = max(
+            0,
+            min(
+                contentInset,
+                min(panelSize.width, panelSize.height) / 2
+            )
+        )
+        let contentSize = CGSize(
+            width: panelSize.width - inset * 2,
+            height: panelSize.height - inset * 2
+        )
+        let contentVisibleFrame = visibleFrame.insetBy(
+            dx: inset,
+            dy: inset
+        )
+        let contentFrame = toolbarContentFrame(
+            anchor: anchor,
+            panelSize: contentSize,
+            visibleFrame: contentVisibleFrame,
+            gap: gap
+        )
+        return contentFrame.insetBy(dx: -inset, dy: -inset)
+    }
+
+    private static func toolbarContentFrame(
+        anchor: CGRect,
+        panelSize: CGSize,
+        visibleFrame: CGRect,
+        gap: CGFloat
     ) -> CGRect {
         let centeredX = anchor.midX - panelSize.width / 2
         let clampedX = clamp(
