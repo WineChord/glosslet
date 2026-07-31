@@ -48,6 +48,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
 
         let threadID = try await client.startThread(
             model: choice.model,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace,
             persistent: true
         )
@@ -68,6 +69,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
             text: "Reply with exactly \(marker) and nothing else.",
             model: choice.model,
             reasoningEffort: choice.reasoningEffort,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace
         )
 
@@ -96,6 +98,99 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         XCTAssertTrue(result.contains(marker), result)
     }
 
+    func testPriorityThreadCompactsAndContinues() async throws {
+        guard
+            ProcessInfo.processInfo.environment[
+                "GLOSSLET_RUN_CODEX_INTEGRATION"
+            ] == "1"
+        else {
+            throw XCTSkip(
+                "Set GLOSSLET_RUN_CODEX_INTEGRATION=1 to run against Codex."
+            )
+        }
+
+        let client = CodexAppServerClient()
+        let stream = await client.eventStream()
+        let models = try await client.listModels()
+        let choice = ModelSelection.recommended(from: models)
+        let workspace = GlossletConstants.defaultWorkspaceURL
+        try FileManager.default.createDirectory(
+            at: workspace,
+            withIntermediateDirectories: true
+        )
+
+        XCTAssertNotNil(choice.model)
+        XCTAssertNotNil(choice.reasoningEffort)
+        XCTAssertEqual(choice.serviceTier, "priority")
+
+        let threadID = try await client.startThread(
+            model: choice.model,
+            serviceTier: choice.serviceTier,
+            workingDirectory: workspace,
+            persistent: true
+        )
+        try await client.setThreadName(
+            threadID: threadID,
+            name: "Glosslet — Performance integration check"
+        )
+        await client.prewarmRuntime(
+            workingDirectory: workspace,
+            threadID: threadID
+        )
+
+        do {
+            let firstMarker =
+                "GLOSSLET_FAST_\(UUID().uuidString.prefix(8))"
+            let first = try await Self.runTurn(
+                client: client,
+                stream: stream,
+                threadID: threadID,
+                text: "Reply with exactly \(firstMarker) and nothing else.",
+                choice: choice,
+                workspace: workspace
+            )
+            XCTAssertTrue(first.contains(firstMarker), first)
+
+            let compactionTask = Task {
+                try await Self.collectCompletion(
+                    from: stream,
+                    threadID: threadID
+                )
+            }
+            try await client.compactThread(threadID: threadID)
+            _ = try await Self.withTimeout(compactionTask)
+
+            let secondMarker =
+                "GLOSSLET_AFTER_COMPACT_\(UUID().uuidString.prefix(8))"
+            let second = try await Self.runTurn(
+                client: client,
+                stream: stream,
+                threadID: threadID,
+                text: "Reply with exactly \(secondMarker) and nothing else.",
+                choice: choice,
+                workspace: workspace
+            )
+            XCTAssertTrue(second.contains(secondMarker), second)
+        } catch {
+            try? await client.archiveThread(threadID: threadID)
+            await client.shutdown()
+            throw error
+        }
+
+        try await client.archiveThread(threadID: threadID)
+        await client.shutdown()
+        print("GLOSSLET_PERFORMANCE_THREAD_ID=\(threadID)")
+        print("GLOSSLET_PERFORMANCE_MODEL=\(choice.model ?? "default")")
+        print(
+            "GLOSSLET_PERFORMANCE_EFFORT="
+                + (choice.reasoningEffort ?? "default")
+        )
+        print(
+            "GLOSSLET_PERFORMANCE_SERVICE_TIER="
+                + (choice.serviceTier ?? "default")
+        )
+    }
+
     func testResumeCodexAppThreadAndContinueStreaming() async throws {
         guard
             let threadID = ProcessInfo.processInfo.environment[
@@ -115,6 +210,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         let resumedID = try await client.resumeThread(
             id: threadID,
             model: choice.model,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace
         )
         XCTAssertEqual(resumedID, threadID)
@@ -131,6 +227,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
             text: "Reply with exactly \(marker) and nothing else.",
             model: choice.model,
             reasoningEffort: choice.reasoningEffort,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace
         )
 
@@ -178,6 +275,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
 
         let threadID = try await firstClient.startThread(
             model: choice.model,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace,
             persistent: true
         )
@@ -196,6 +294,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         _ = try await secondClient.resumeThread(
             id: threadID,
             model: choice.model,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace
         )
         let externalMarker = "CODEX_SIDE_\(UUID().uuidString.prefix(8))"
@@ -212,6 +311,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         let reloadedID = try await firstClient.reloadThreadFromDisk(
             id: threadID,
             model: choice.model,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace
         )
         XCTAssertEqual(reloadedID, threadID)
@@ -252,6 +352,7 @@ final class CodexAppServerIntegrationTests: XCTestCase {
             text: text,
             model: choice.model,
             reasoningEffort: choice.reasoningEffort,
+            serviceTier: choice.serviceTier,
             workingDirectory: workspace
         )
 
@@ -260,6 +361,23 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         ) { group in
             group.addTask {
                 try await resultTask.value
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(120))
+                throw AppServerProtocolError.requestTimedOut
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private static func withTimeout(
+        _ task: Task<String, Error>
+    ) async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                try await task.value
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(120))

@@ -383,14 +383,28 @@ private struct ModelSelectionControl: View {
                 systemImage: "cpu",
                 title: conversation.currentChoice.displayName,
                 width: 180,
-                isExpanded: isExpanded
+                isExpanded: isExpanded,
+                badgeSystemImage:
+                    conversation.usesPriorityService
+                    ? "bolt.fill"
+                    : nil
             )
         }
         .buttonStyle(.plain)
         .disabled(conversation.isBusy)
-        .help(L10n.chooseModel)
+        .help(
+            conversation.usesPriorityService
+                ? "\(L10n.chooseModel) · \(L10n.fastModeDescription)"
+                : L10n.chooseModel
+        )
         .accessibilityLabel(
-            "\(L10n.chooseModel): \(conversation.currentChoice.displayName)"
+            [
+                "\(L10n.chooseModel): "
+                    + conversation.currentChoice.displayName,
+                conversation.usesPriorityService ? L10n.fastMode : nil,
+            ]
+            .compactMap { $0 }
+            .joined(separator: ", ")
         )
     }
 }
@@ -436,8 +450,7 @@ private struct ModelSelectionDrawer: View {
         ConfigurationDrawer(title: L10n.chooseModel) {
             ConfigurationOptionButton(
                 title: L10n.latestLowest,
-                subtitle: conversation.visibleModels
-                    .first(where: \.isDefault)?.displayName,
+                subtitle: recommendedSubtitle,
                 isSelected:
                     conversation.activeModelPolicy == .latestLowest
             ) {
@@ -465,7 +478,7 @@ private struct ModelSelectionDrawer: View {
                 ForEach(conversation.visibleModels) { model in
                     ConfigurationOptionButton(
                         title: model.displayName,
-                        subtitle: model.model,
+                        subtitle: modelSubtitle(model),
                         isSelected:
                             conversation.activeModelPolicy == .custom
                             && conversation.currentChoice.model
@@ -477,6 +490,24 @@ private struct ModelSelectionDrawer: View {
                 }
             }
         }
+    }
+
+    private var recommendedSubtitle: String? {
+        guard
+            let model = conversation.visibleModels.first(
+                where: \.isDefault
+            )
+        else {
+            return nil
+        }
+        return modelSubtitle(model)
+    }
+
+    private func modelSubtitle(_ model: CodexModel) -> String {
+        guard ModelSelection.fastestServiceTier(in: model) != nil else {
+            return model.model
+        }
+        return "\(model.model) · \(L10n.fastModeDescription)"
     }
 }
 
@@ -612,6 +643,7 @@ private struct SelectorPill: View {
     let title: String
     let width: CGFloat
     let isExpanded: Bool
+    var badgeSystemImage: String? = nil
 
     var body: some View {
         HStack(spacing: 6) {
@@ -623,6 +655,12 @@ private struct SelectorPill: View {
                 .font(.system(size: 11.25, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if let badgeSystemImage {
+                Image(systemName: badgeSystemImage)
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
             Spacer(minLength: 2)
             Image(
                 systemName:

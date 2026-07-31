@@ -42,7 +42,8 @@ public enum ModelSelection {
             displayName: selected.displayName,
             reasoningEffort: lowestEffort(
                 in: selected.supportedReasoningEfforts
-            ) ?? selected.defaultReasoningEffort
+            ) ?? selected.defaultReasoningEffort,
+            serviceTier: fastestServiceTier(in: selected)
         )
     }
 
@@ -79,7 +80,8 @@ public enum ModelSelection {
             return ModelChoice(
                 model: selected.model,
                 displayName: selected.displayName,
-                reasoningEffort: effort
+                reasoningEffort: effort,
+                serviceTier: fastestServiceTier(in: selected)
             )
         }
     }
@@ -90,6 +92,20 @@ public enum ModelSelection {
         options.min { lhs, rhs in
             effortRank(lhs.effort) < effortRank(rhs.effort)
         }?.effort
+    }
+
+    public static func fastestServiceTier(in model: CodexModel) -> String? {
+        if model.serviceTiers.contains(where: { $0.id == "priority" }) {
+            return "priority"
+        }
+        if let defaultServiceTier = model.defaultServiceTier,
+            model.serviceTiers.contains(where: {
+                $0.id == defaultServiceTier
+            })
+        {
+            return defaultServiceTier
+        }
+        return nil
     }
 
     private static func effortRank(_ effort: String) -> Int {

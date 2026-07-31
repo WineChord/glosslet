@@ -2,6 +2,23 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.4 — 2026-07-31
+
+- Prewarmed the saved Codex task, skill catalog, hooks, and MCP metadata at app
+  launch so deterministic setup no longer blocks the first visible request.
+- Used the latest model's advertised priority service tier together with the
+  existing lowest-reasoning policy; the model picker now discloses its increased
+  usage.
+- Added idle, same-task context compaction based on Codex token-usage events so
+  a long-running fixed task stays responsive without losing its ID or visible
+  history.
+- Coalesced fixed-task attachment and model discovery across simultaneous
+  startup and selection requests.
+- Shortened the initial explanation envelope while preserving quoted-selection
+  isolation, language adaptation, technical notation, and read-only behavior.
+- Added a live integration check for priority routing, native compaction,
+  persistent continuation, and automatic cleanup of its disposable task.
+
 ## 0.2.3 — 2026-07-31
 
 - Kept the active Codex task and app-server connection warm between Glosslet

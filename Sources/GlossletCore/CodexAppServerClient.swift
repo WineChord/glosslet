@@ -34,6 +34,7 @@ public actor CodexAppServerClient {
     private var processGeneration = 0
     private var initialized = false
     private var connectionTask: Task<Void, Error>?
+    private var modelListTask: Task<[CodexModel], Error>?
     private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
     private var eventContinuations: [UUID: AsyncStream<AppServerEvent>.Continuation] =
         [:]
@@ -122,6 +123,27 @@ public actor CodexAppServerClient {
     }
 
     public func listModels() async throws -> [CodexModel] {
+        if let modelListTask {
+            return try await modelListTask.value
+        }
+        let task = Task { [weak self] in
+            guard let self else {
+                throw AppServerProtocolError.processUnavailable
+            }
+            return try await self.fetchModels()
+        }
+        modelListTask = task
+        do {
+            let models = try await task.value
+            modelListTask = nil
+            return models
+        } catch {
+            modelListTask = nil
+            throw error
+        }
+    }
+
+    private func fetchModels() async throws -> [CodexModel] {
         try await connect()
         let result = try await sendRequest(
             method: "model/list",
@@ -138,8 +160,54 @@ public actor CodexAppServerClient {
         return try values.map(CodexModel.init(json:))
     }
 
+    public func prewarmRuntime(
+        workingDirectory: URL,
+        threadID: String?
+    ) async {
+        do {
+            try await connect()
+        } catch {
+            return
+        }
+
+        async let skills: Void = bestEffortRequest(
+            method: "skills/list",
+            params: .object([
+                "cwds": .array([
+                    .string(workingDirectory.path)
+                ]),
+                "forceReload": .bool(false),
+            ])
+        )
+        async let hooks: Void = bestEffortRequest(
+            method: "hooks/list",
+            params: .object([
+                "cwds": .array([
+                    .string(workingDirectory.path)
+                ])
+            ])
+        )
+        async let mcp: Void = bestEffortRequest(
+            method: "mcpServerStatus/list",
+            params: .compactObject([
+                "limit": .number(100),
+                "detail": .string("toolsAndAuthOnly"),
+                "threadId": threadID.map(JSONValue.string),
+            ])
+        )
+        _ = await (skills, hooks, mcp)
+    }
+
+    private func bestEffortRequest(
+        method: String,
+        params: JSONValue
+    ) async {
+        _ = try? await sendRequest(method: method, params: params)
+    }
+
     public func startThread(
         model: String?,
+        serviceTier: String? = nil,
         workingDirectory: URL,
         persistent: Bool = true
     ) async throws -> String {
@@ -148,6 +216,7 @@ public actor CodexAppServerClient {
             method: "thread/start",
             params: .compactObject([
                 "model": model.map(JSONValue.string),
+                "serviceTier": serviceTier.map(JSONValue.string),
                 "cwd": .string(workingDirectory.path),
                 "ephemeral": .bool(!persistent),
                 "threadSource": .string(GlossletConstants.clientName),
@@ -165,6 +234,7 @@ public actor CodexAppServerClient {
     public func resumeThread(
         id threadID: String,
         model: String?,
+        serviceTier: String? = nil,
         workingDirectory: URL
     ) async throws -> String {
         try await connect()
@@ -173,6 +243,7 @@ public actor CodexAppServerClient {
             params: .compactObject([
                 "threadId": .string(threadID),
                 "model": model.map(JSONValue.string),
+                "serviceTier": serviceTier.map(JSONValue.string),
                 "cwd": .string(workingDirectory.path),
             ])
         )
@@ -190,12 +261,14 @@ public actor CodexAppServerClient {
     public func reloadThreadFromDisk(
         id threadID: String,
         model: String?,
+        serviceTier: String? = nil,
         workingDirectory: URL
     ) async throws -> String {
         shutdown()
         return try await resumeThread(
             id: threadID,
             model: model,
+            serviceTier: serviceTier,
             workingDirectory: workingDirectory
         )
     }
@@ -213,11 +286,21 @@ public actor CodexAppServerClient {
         )
     }
 
+    public func archiveThread(threadID: String) async throws {
+        _ = try await sendRequest(
+            method: "thread/archive",
+            params: .object([
+                "threadId": .string(threadID)
+            ])
+        )
+    }
+
     public func startTurn(
         threadID: String,
         text: String,
         model: String?,
         reasoningEffort: String?,
+        serviceTier: String? = nil,
         workingDirectory: URL
     ) async throws -> String {
         try await connect()
@@ -233,6 +316,7 @@ public actor CodexAppServerClient {
                 ]),
                 "model": model.map(JSONValue.string),
                 "effort": reasoningEffort.map(JSONValue.string),
+                "serviceTier": serviceTier.map(JSONValue.string),
                 "cwd": .string(workingDirectory.path),
                 "clientUserMessageId": .string(UUID().uuidString),
             ])
@@ -243,6 +327,16 @@ public actor CodexAppServerClient {
             )
         }
         return turnID
+    }
+
+    public func compactThread(threadID: String) async throws {
+        try await connect()
+        _ = try await sendRequest(
+            method: "thread/compact/start",
+            params: .object([
+                "threadId": .string(threadID)
+            ])
+        )
     }
 
     public func interruptTurn(
@@ -561,6 +655,20 @@ public actor CodexAppServerClient {
                     turnID: turnID,
                     status: status,
                     errorMessage: errorMessage
+                )
+            }
+        case "thread/tokenUsage/updated":
+            if let threadID = params["threadId"]?.stringValue,
+                let turnID = params["turnId"]?.stringValue,
+                let last = params["tokenUsage"]?["last"],
+                let inputTokens = last["inputTokens"]?.intValue
+            {
+                return .tokenUsageUpdated(
+                    threadID: threadID,
+                    turnID: turnID,
+                    inputTokens: inputTokens,
+                    cachedInputTokens:
+                        last["cachedInputTokens"]?.intValue ?? 0
                 )
             }
         case "warning":

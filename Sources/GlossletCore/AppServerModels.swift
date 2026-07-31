@@ -10,6 +10,18 @@ public struct ReasoningEffortOption: Equatable, Sendable {
     }
 }
 
+public struct CodexServiceTier: Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let description: String
+
+    public init(id: String, name: String, description: String) {
+        self.id = id
+        self.name = name
+        self.description = description
+    }
+}
+
 public struct CodexModel: Identifiable, Equatable, Sendable {
     public let id: String
     public let model: String
@@ -19,6 +31,8 @@ public struct CodexModel: Identifiable, Equatable, Sendable {
     public let isDefault: Bool
     public let defaultReasoningEffort: String
     public let supportedReasoningEfforts: [ReasoningEffortOption]
+    public let serviceTiers: [CodexServiceTier]
+    public let defaultServiceTier: String?
 
     public init(
         id: String,
@@ -28,7 +42,9 @@ public struct CodexModel: Identifiable, Equatable, Sendable {
         hidden: Bool,
         isDefault: Bool,
         defaultReasoningEffort: String,
-        supportedReasoningEfforts: [ReasoningEffortOption]
+        supportedReasoningEfforts: [ReasoningEffortOption],
+        serviceTiers: [CodexServiceTier] = [],
+        defaultServiceTier: String? = nil
     ) {
         self.id = id
         self.model = model
@@ -38,6 +54,8 @@ public struct CodexModel: Identifiable, Equatable, Sendable {
         self.isDefault = isDefault
         self.defaultReasoningEffort = defaultReasoningEffort
         self.supportedReasoningEfforts = supportedReasoningEfforts
+        self.serviceTiers = serviceTiers
+        self.defaultServiceTier = defaultServiceTier
     }
 
     public init(json: JSONValue) throws {
@@ -71,6 +89,18 @@ public struct CodexModel: Identifiable, Equatable, Sendable {
                 description: value["description"]?.stringValue ?? effort
             )
         }
+        serviceTiers =
+            json["serviceTiers"]?.arrayValue?.compactMap { value in
+                guard let id = value["id"]?.stringValue else {
+                    return nil
+                }
+                return CodexServiceTier(
+                    id: id,
+                    name: value["name"]?.stringValue ?? id,
+                    description: value["description"]?.stringValue ?? ""
+                )
+            } ?? []
+        defaultServiceTier = json["defaultServiceTier"]?.stringValue
     }
 }
 
@@ -78,15 +108,18 @@ public struct ModelChoice: Equatable, Sendable {
     public let model: String?
     public let displayName: String
     public let reasoningEffort: String?
+    public let serviceTier: String?
 
     public init(
         model: String?,
         displayName: String,
-        reasoningEffort: String?
+        reasoningEffort: String?,
+        serviceTier: String? = nil
     ) {
         self.model = model
         self.displayName = displayName
         self.reasoningEffort = reasoningEffort
+        self.serviceTier = serviceTier
     }
 }
 
@@ -143,6 +176,12 @@ public enum AppServerEvent: Equatable, Sendable {
         turnID: String,
         status: String,
         errorMessage: String?
+    )
+    case tokenUsageUpdated(
+        threadID: String,
+        turnID: String,
+        inputTokens: Int,
+        cachedInputTokens: Int
     )
     case serverRequest(AppServerRequest)
     case warning(String)

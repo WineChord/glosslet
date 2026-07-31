@@ -42,6 +42,25 @@ final class GlossletCoreTests: XCTestCase {
         XCTAssertEqual(choice.model, "gpt-latest")
         XCTAssertEqual(choice.displayName, "Latest")
         XCTAssertEqual(choice.reasoningEffort, "low")
+        XCTAssertNil(choice.serviceTier)
+    }
+
+    func testRecommendedModelUsesAdvertisedPriorityService() {
+        let models = [
+            model(
+                id: "gpt-latest",
+                displayName: "Latest",
+                isDefault: true,
+                efforts: ["low", "medium"],
+                serviceTiers: ["priority"]
+            )
+        ]
+
+        let choice = ModelSelection.recommended(from: models)
+
+        XCTAssertEqual(choice.model, "gpt-latest")
+        XCTAssertEqual(choice.reasoningEffort, "low")
+        XCTAssertEqual(choice.serviceTier, "priority")
     }
 
     func testRecommendedModelSkipsHiddenAndReviewModels() {
@@ -83,6 +102,7 @@ final class GlossletCoreTests: XCTestCase {
 
         XCTAssertNil(choice.model)
         XCTAssertNil(choice.reasoningEffort)
+        XCTAssertNil(choice.serviceTier)
         XCTAssertEqual(choice.displayName, "Codex default")
     }
 
@@ -405,7 +425,8 @@ final class GlossletCoreTests: XCTestCase {
         hidden: Bool = false,
         isDefault: Bool,
         defaultEffort: String = "medium",
-        efforts: [String]
+        efforts: [String],
+        serviceTiers: [String] = []
     ) -> CodexModel {
         CodexModel(
             id: id,
@@ -417,6 +438,13 @@ final class GlossletCoreTests: XCTestCase {
             defaultReasoningEffort: defaultEffort,
             supportedReasoningEfforts: efforts.map {
                 ReasoningEffortOption(effort: $0, description: $0)
+            },
+            serviceTiers: serviceTiers.map {
+                CodexServiceTier(
+                    id: $0,
+                    name: $0,
+                    description: $0
+                )
             }
         )
     }
