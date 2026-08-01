@@ -2,6 +2,15 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.8 — 2026-08-01
+
+- Enables launch at login by default when no earlier preference exists, while
+  preserving an explicit choice to turn it off across upgrades.
+- Reconciles the in-app switch with the macOS login-item state at launch and
+  when Settings becomes active again.
+- Adds a direct recovery path to Login Items settings when macOS requires the
+  user to approve Glosslet again.
+
 ## 0.2.7 — 2026-08-01
 
 - Reuses the authenticated persistent Codex App Server control socket when it

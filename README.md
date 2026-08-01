@@ -48,6 +48,8 @@ either place. Glosslet never uses hidden or ephemeral threads.
   code, inline math, and display LaTeX using a fully local renderer.
 - Starts unpinned and disappears when focus moves elsewhere; pin it when the
   conversation should remain above other apps.
+- Starts at login by default; the Settings switch can turn this off at any
+  time, and an explicit off choice is preserved across upgrades.
 - Supports follow-ups, stopping a turn, approvals, and opening the exact task
   in the Codex app.
 - Restores the fixed task and prewarms Codex skills, hooks, and MCP metadata
@@ -171,6 +173,9 @@ Glosslet 是一款原生 macOS 菜单栏工具。在几乎任何支持 macOS 辅
 
 悬浮小窗支持 Markdown、表格、代码高亮与 LaTeX。默认不固定，点击其他地方就会
 自动隐藏；需要边工作边查看时，可以点击标题栏中的固定按钮。
+
+Glosslet 默认会在登录 macOS 时自动启动；你可以随时在“设置”中关闭“登录时启动”，
+明确关闭后，后续升级不会擅自重新开启。
 
 默认配置会动态选择 Codex 当前最新的默认模型，并使用该模型支持的最低推理程度；
 如果模型目录提供优先服务层，还会默认启用“极速”处理。极速处理更快，但会增加

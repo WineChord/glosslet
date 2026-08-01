@@ -63,6 +63,9 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         isPreviewSession =
             isRenderingPreview || isThinkingPreview || isToolbarPreview
             || isOnboardingPreview
+        if !isPreviewSession {
+            synchronizeLaunchAtLogin()
+        }
         configureStatusItem()
         bindPreferences()
         permissionMonitor.start()
@@ -175,6 +178,19 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 self.panels.hideToolbar()
             }
             self.updateStatusItemTooltip()
+        }
+    }
+
+    private func synchronizeLaunchAtLogin() {
+        do {
+            let isEnabled = try LaunchAtLoginController.synchronize(
+                preferredEnabled: preferences.launchAtLogin
+            )
+            if preferences.launchAtLogin != isEnabled {
+                preferences.launchAtLogin = isEnabled
+            }
+        } catch {
+            preferences.launchAtLogin = LaunchAtLoginController.isEnabled
         }
     }
 
