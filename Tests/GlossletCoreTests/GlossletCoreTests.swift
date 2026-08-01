@@ -4,6 +4,21 @@ import XCTest
 @testable import GlossletCore
 
 final class GlossletCoreTests: XCTestCase {
+    func testLaunchAtLoginDefaultsToEnabledWhenUnset() {
+        XCTAssertTrue(
+            LaunchAtLoginPreference.resolve(storedValue: nil)
+        )
+    }
+
+    func testLaunchAtLoginPreservesExplicitChoice() {
+        XCTAssertTrue(
+            LaunchAtLoginPreference.resolve(storedValue: true)
+        )
+        XCTAssertFalse(
+            LaunchAtLoginPreference.resolve(storedValue: false)
+        )
+    }
+
     func testJSONValueRoundTripAndOptionalObjectEntries() throws {
         let value = JSONValue.compactObject([
             "text": .string("hello"),

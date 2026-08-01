@@ -15,6 +15,10 @@ enum GlossletMain {
             printSelectionDiagnostic(bundleIdentifier: nil)
             return
         }
+        if arguments.contains("--diagnose-launch-at-login") {
+            printLaunchAtLoginDiagnostic()
+            return
+        }
 
         let application = NSApplication.shared
         let delegate = GlossletAppDelegate()
@@ -81,5 +85,14 @@ enum GlossletMain {
                     + " status=\(failure.rawValue)"
             )
         }
+    }
+
+    @MainActor
+    private static func printLaunchAtLoginDiagnostic() {
+        let preferences = AppPreferences()
+        print(
+            "preferred=\(preferences.launchAtLogin)"
+                + " status=\(LaunchAtLoginController.status.rawValue)"
+        )
     }
 }

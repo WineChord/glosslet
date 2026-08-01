@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var conversation: ConversationController
     @ObservedObject var permissionMonitor: AccessibilityPermissionMonitor
     @State private var launchError: String?
+    @State private var launchRequiresApproval = false
     @State private var permissionRepairError: String?
     @State private var isRepairingPermission = false
 
@@ -30,7 +31,15 @@ struct SettingsView: View {
         .tint(Color(red: 0.17, green: 0.16, blue: 0.35))
         .task {
             permissionMonitor.refresh()
+            refreshLaunchAtLogin()
             await conversation.refreshModels(showErrors: false)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            refreshLaunchAtLogin()
         }
     }
 
@@ -101,6 +110,12 @@ struct SettingsView: View {
                 Text(launchError)
                     .font(.caption)
                     .foregroundStyle(.orange)
+            }
+
+            if launchRequiresApproval {
+                Button(L10n.openLoginItemsSettings) {
+                    LaunchAtLoginController.openSystemSettings()
+                }
             }
 
             Text(L10n.privacyNote)
@@ -241,12 +256,34 @@ struct SettingsView: View {
     private func updateLaunchAtLogin(_ enabled: Bool) {
         do {
             try LaunchAtLoginController.setEnabled(enabled)
-            preferences.launchAtLogin = enabled
+            preferences.launchAtLogin =
+                LaunchAtLoginController.isEnabled
+            launchRequiresApproval =
+                LaunchAtLoginController.status == .requiresApproval
+            launchError = nil
+        } catch {
+            preferences.launchAtLogin = LaunchAtLoginController.isEnabled
+            launchRequiresApproval =
+                LaunchAtLoginController.status == .requiresApproval
+            launchError = error.localizedDescription
+        }
+    }
+
+    private func refreshLaunchAtLogin() {
+        do {
+            let isEnabled = try LaunchAtLoginController.synchronize(
+                preferredEnabled: preferences.launchAtLogin
+            )
+            if preferences.launchAtLogin != isEnabled {
+                preferences.launchAtLogin = isEnabled
+            }
             launchError = nil
         } catch {
             preferences.launchAtLogin = LaunchAtLoginController.isEnabled
             launchError = error.localizedDescription
         }
+        launchRequiresApproval =
+            LaunchAtLoginController.status == .requiresApproval
     }
 
     private func repairAccessibilityPermission() {

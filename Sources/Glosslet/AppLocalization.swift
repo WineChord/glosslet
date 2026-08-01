@@ -128,6 +128,18 @@ enum L10n {
     static let about = text("About", "关于")
     static let selectionToolbar = text("Selection toolbar", "划词工具条")
     static let launchAtLogin = text("Launch at login", "登录时启动")
+    static let launchAtLoginApprovalRequired = text(
+        "macOS has disabled this login item. Re-enable Glosslet in System Settings.",
+        "macOS 已停用此登录项，请在系统设置中重新允许 Glosslet。"
+    )
+    static let launchAtLoginUnavailable = text(
+        "Glosslet could not update the login item.",
+        "Glosslet 无法更新登录项。"
+    )
+    static let openLoginItemsSettings = text(
+        "Open Login Items Settings",
+        "打开登录项设置"
+    )
     static let conversationMode = text("Conversation mode", "会话模式")
     static let reuseTask = text(
         "Reuse one fixed Codex task",

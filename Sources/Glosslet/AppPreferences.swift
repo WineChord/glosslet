@@ -73,9 +73,10 @@ final class AppPreferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let storedLaunchAtLogin =
+            defaults.object(forKey: Key.launchAtLogin) as? Bool
         defaults.register(defaults: [
             Key.selectionEnabled: true,
-            Key.launchAtLogin: false,
             Key.threadMode: ThreadMode.reuseFixed.rawValue,
             Key.modelPolicy: ModelPolicy.latestLowest.rawValue,
             Key.explanationLanguage: ExplanationLanguage.automatic.rawValue,
@@ -83,7 +84,9 @@ final class AppPreferences: ObservableObject {
         ])
 
         selectionEnabled = defaults.bool(forKey: Key.selectionEnabled)
-        launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
+        launchAtLogin = LaunchAtLoginPreference.resolve(
+            storedValue: storedLaunchAtLogin
+        )
         threadMode =
             ThreadMode(
                 rawValue: defaults.string(forKey: Key.threadMode) ?? ""
