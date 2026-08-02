@@ -2,6 +2,12 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.10 — 2026-08-02
+
+- Includes informational entries in the local latency diagnostic helper so
+  successful background recovery and request phases are visible alongside
+  retries and failures.
+
 ## 0.2.9 — 2026-08-02
 
 - Restores the saved fixed task automatically after a Codex App Server restart,
