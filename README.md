@@ -53,8 +53,9 @@ either place. Glosslet never uses hidden or ephemeral threads.
 - Supports follow-ups, stopping a turn, approvals, and opening the exact task
   in the Codex app.
 - Restores the fixed task and prewarms Codex skills, hooks, and MCP metadata
-  when Glosslet launches, then keeps that task attached for fast consecutive
-  explanations.
+  when Glosslet launches. It automatically reattaches after a Codex restart,
+  macOS wake, or Codex relaunch, and uses selection appearance as a rate-limited
+  readiness probe so recovery normally finishes before **Explain** is clicked.
 - Leaves context-window management, automatic compaction, and rollover to
   Codex. Glosslet reuses the persistent task without imposing its own token
   threshold or starting background maintenance turns.
@@ -152,10 +153,23 @@ request.
 
 Threads are created with `ephemeral: false`, receive recognizable
 `Glosslet — …` titles, and keep their fixed task identifier locally for reuse.
-Consecutive turns stay attached to the live task. When the Codex app is opened,
-Glosslet marks the task for a history refresh before the next turn so changes
-from either surface are retained. The floating panel's **Open Codex** button
-deep-links to that exact task.
+Consecutive turns stay attached to the live task. When Codex is relaunched or
+activated, Glosslet refreshes the task in the background so changes from either
+surface are retained without deferring that work to the next visible request.
+The floating panel's **Open Codex** button deep-links to that exact task.
+
+Glosslet never sends a hidden model turn to keep a prompt cache alive. Its
+readiness work is limited to native task attachment and local Codex runtime
+metadata; the actual explanation still follows the selected model, reasoning
+effort, service tier, and Codex-owned context lifecycle.
+
+For latency diagnostics, Glosslet records phase names, elapsed milliseconds,
+token counts, and cached-input counts without recording selected text or prompt
+content:
+
+```bash
+scripts/show_latency.sh 15m
+```
 
 No API key is stored by Glosslet, and no separate chat database is created.
 See [Architecture](docs/ARCHITECTURE.md) for the protocol flow.
@@ -180,9 +194,11 @@ Glosslet 默认会在登录 macOS 时自动启动；你可以随时在“设置�
 默认配置会动态选择 Codex 当前最新的默认模型，并使用该模型支持的最低推理程度；
 如果模型目录提供优先服务层，还会默认启用“极速”处理。极速处理更快，但会增加
 Codex 额度消耗。悬浮窗顶部可以直接切换模型与推理强度，也可以改为完全沿用
-Codex 默认值。Glosslet 启动时会在后台恢复固定任务并预热 Codex 运行环境；固定
-任务上下文变长后，由 Codex 自己负责上下文窗口管理、自动压缩与滚动；Glosslet
-不会另设 Token 阈值，也不会主动插入后台维护轮次。
+Codex 默认值。Glosslet 启动、macOS 唤醒、Codex 重启或重新打开后，会在后台恢复
+固定任务并预热 Codex 运行环境；划词工具条出现时还会做限频的就绪检查，尽量不把
+恢复成本留给“解释”按钮。固定任务上下文变长后，由 Codex 自己负责上下文窗口
+管理、自动压缩与滚动；Glosslet 不会另设 Token 阈值，也不会主动插入隐藏的模型
+轮次来维持缓存。
 
 本地重新构建会改变临时签名。如果系统设置中的 Glosslet 开关看似已开启，但应用
 仍未识别，可以在引导页点击“修复失效的权限条目…”，再授权当前应用。从 v0.2.7

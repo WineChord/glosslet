@@ -25,6 +25,7 @@ final class GlossletAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return
         }
         if let selection {
+            conversation.selectionDidBecomeAvailable()
             self.panels.showToolbar(for: selection)
         } else {
             self.panels.hideToolbar()

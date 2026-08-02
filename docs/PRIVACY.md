@@ -9,7 +9,12 @@ Glosslet is designed to have a small, understandable data boundary.
 - App preferences
 - The identifier of the fixed Codex task
 
-Glosslet has no analytics or telemetry.
+Glosslet has no analytics or external telemetry. It writes privacy-safe
+performance diagnostics to the local macOS unified log: request type, phase,
+elapsed milliseconds, token totals, cache totals, and bounded recovery state.
+It does not log selected text, follow-up text, prompts, task identifiers, model
+output, credentials, or approval contents. These diagnostics remain subject to
+the Mac's normal unified-log retention.
 
 Markdown and LaTeX are rendered with libraries bundled inside the app. The
 renderer uses a non-persistent WebKit data store, does not use a CDN, blocks
