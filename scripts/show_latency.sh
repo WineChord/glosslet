@@ -5,6 +5,7 @@ set -euo pipefail
 lookback="${1:-15m}"
 
 /usr/bin/log show \
+    --info \
     --style compact \
     --last "$lookback" \
     --predicate \
