@@ -2,6 +2,23 @@
 
 All notable changes to Glosslet will be documented in this file.
 
+## 0.2.9 — 2026-08-02
+
+- Restores the saved fixed task automatically after a Codex App Server restart,
+  macOS wake, or Codex relaunch instead of moving that recovery onto the next
+  Explain click.
+- Uses a short bounded retry schedule while the preferred Codex control socket
+  is restarting, then retains the installed Codex executable as a fallback.
+- Validates the live connection generation before reusing an attached task so
+  a stale attachment cannot silently survive a transport replacement.
+- Uses selection appearance as a rate-limited readiness probe and refreshes
+  skills, hooks, and MCP metadata without creating a hidden model turn.
+- Separates Codex preparation from model thinking in the floating status and
+  records privacy-safe phase timings for connection, task attachment, first
+  content, completion, and prompt-cache usage.
+- Adds unit coverage for retry behavior and a live integration check that
+  resumes a persistent task on a new connection and preserves its context.
+
 ## 0.2.8 — 2026-08-01
 
 - Enables launch at login by default when no earlier preference exists, while

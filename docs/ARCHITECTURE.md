@@ -93,14 +93,31 @@ notifications, streamed agent-message deltas, turn lifecycle events, and
 approval requests are decoded into the same typed Swift values.
 
 An active task remains attached to the live App Server across consecutive
-Glosslet turns. The transcript reports connection, history refresh, reasoning,
-and response-writing stages separately and derives elapsed time from the
-original request timestamp. Concurrent startup callers share one connection
-task so onboarding, model discovery, and an immediate selection cannot race
-multiple connections or child processes. Launch preparation also restores the
-saved fixed task and asks App Server to populate its cached skill, hook, and MCP
-metadata. This moves deterministic environment discovery off the first visible
-request without sending a model turn.
+Glosslet turns. Every initialized transport receives a monotonically increasing
+connection generation; a task is reused only when its recorded generation still
+matches the live connection. The transcript reports connection, history
+refresh, Codex preparation, reasoning, and response-writing stages separately
+and derives elapsed time from the original request timestamp.
+
+Concurrent startup callers share one connection task so onboarding, model
+discovery, and an immediate selection cannot race multiple connections or child
+processes. A bounded 0.35–12 second retry schedule reconnects after control-
+socket termination, macOS wake, and Codex relaunch. The first retries wait for a
+restarting control socket; the installed Codex executable remains the fallback
+if that socket does not return. Activation of Codex performs the existing
+cross-surface history refresh in the background instead of deferring it to the
+next explanation.
+
+Launch and recovery preparation restore the saved fixed task and ask App Server
+to populate its cached skill, hook, and MCP metadata. Selection appearance is a
+rate-limited readiness probe, so a stale connection can be repaired in the gap
+between selecting text and clicking **Explain**. These operations do not create
+a model turn.
+
+`CodexLatency` logs contain only request type, phase, elapsed milliseconds,
+token totals, and cached-input totals. `CodexLifecycle` logs contain recovery
+trigger, retry count, and elapsed milliseconds. Neither category records the
+selected text, follow-up text, or constructed prompt.
 
 ## Persistent task invariant
 
@@ -113,18 +130,20 @@ starts a separate persistent task each time.
 Tasks use the same Codex home and authentication as the user's Codex app, so
 the Codex app can discover and continue them. The reverse direction works too:
 consecutive Glosslet requests reuse the already attached task, while activation
-of the Codex app marks that task as externally changed. Glosslet reconnects and
-resumes the persistent task before the next request only in that case. When the
-shared control socket is in use, both clients already observe the same live task
-state; with a child process, resuming reloads the durable history from disk.
-This preserves cross-surface history without imposing a cold start on every
+of the Codex app marks that task as externally changed. Glosslet immediately
+reconnects and resumes the persistent task in the background. When the shared
+control socket is in use, both clients already observe the same live task state;
+with a child process, resuming reloads the durable history from disk. This
+preserves cross-surface history without imposing a cold start on every
 explanation.
 
 Codex remains responsible for context-window management, automatic compaction,
 and rollover. Glosslet does not choose a token threshold, schedule a background
-maintenance turn, or call `thread/compact/start`. It resumes the persistent task
-and submits each explanation or follow-up directly through `turn/start`, while
-native context-management events remain part of the Codex task lifecycle.
+maintenance turn, call `thread/compact/start`, or schedule a periodic
+`turn/start` keepalive for provider-side prompt caching. Codex may still perform
+its own native startup prewarm while resuming a task. Glosslet submits each
+explanation or follow-up directly through `turn/start`, while native
+context-management events remain part of the Codex task lifecycle.
 
 ## Model policy
 

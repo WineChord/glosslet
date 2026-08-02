@@ -34,7 +34,10 @@ public actor CodexAppServerClient {
     private var standardErrorTail = Data()
     private var nextRequestID = 1
     private var processGeneration = 0
+    private var connectionGeneration = 0
     private var initialized = false
+    private var activeTransport: CodexConnectionTransport?
+    private var lastTransport: CodexConnectionTransport?
     private var connectionTask: Task<Void, Error>?
     private var modelListTask: Task<[CodexModel], Error>?
     private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
@@ -95,6 +98,17 @@ public actor CodexAppServerClient {
             connectionTask = nil
             throw error
         }
+    }
+
+    public func connectionStatus() -> CodexConnectionStatus {
+        CodexConnectionStatus(
+            isReady: transportIsAvailable && initialized,
+            generation: initialized ? connectionGeneration : nil,
+            transport: activeTransport,
+            lastTransport: lastTransport,
+            preferredControlSocketAvailable:
+                controlSocketURLProvider() != nil
+        )
     }
 
     private func establishConnection() async throws {
@@ -158,6 +172,7 @@ public actor CodexAppServerClient {
         {
             throw AppServerProtocolError.codexNotAuthenticated
         }
+        connectionGeneration += 1
         initialized = true
     }
 
@@ -199,17 +214,18 @@ public actor CodexAppServerClient {
         return try values.map(CodexModel.init(json:))
     }
 
+    @discardableResult
     public func prewarmRuntime(
         workingDirectory: URL,
         threadID: String?
-    ) async {
+    ) async -> Bool {
         do {
             try await connect()
         } catch {
-            return
+            return false
         }
 
-        async let skills: Void = bestEffortRequest(
+        async let skills: Bool = bestEffortRequest(
             method: "skills/list",
             params: .object([
                 "cwds": .array([
@@ -218,7 +234,7 @@ public actor CodexAppServerClient {
                 "forceReload": .bool(false),
             ])
         )
-        async let hooks: Void = bestEffortRequest(
+        async let hooks: Bool = bestEffortRequest(
             method: "hooks/list",
             params: .object([
                 "cwds": .array([
@@ -226,7 +242,7 @@ public actor CodexAppServerClient {
                 ])
             ])
         )
-        async let mcp: Void = bestEffortRequest(
+        async let mcp: Bool = bestEffortRequest(
             method: "mcpServerStatus/list",
             params: .compactObject([
                 "limit": .number(100),
@@ -234,14 +250,20 @@ public actor CodexAppServerClient {
                 "threadId": threadID.map(JSONValue.string),
             ])
         )
-        _ = await (skills, hooks, mcp)
+        let results = await (skills, hooks, mcp)
+        return results.0 || results.1 || results.2
     }
 
     private func bestEffortRequest(
         method: String,
         params: JSONValue
-    ) async {
-        _ = try? await sendRequest(method: method, params: params)
+    ) async -> Bool {
+        do {
+            _ = try await sendRequest(method: method, params: params)
+            return true
+        } catch {
+            return false
+        }
     }
 
     public func startThread(
@@ -406,6 +428,9 @@ public actor CodexAppServerClient {
     public func shutdown() {
         let activeProcess = process
         let activeUnixConnection = unixConnection
+        if let activeTransport {
+            lastTransport = activeTransport
+        }
         processGeneration += 1
         activeProcess?.terminationHandler = nil
         outputHandle?.readabilityHandler = nil
@@ -417,6 +442,7 @@ public actor CodexAppServerClient {
         outputHandle = nil
         errorHandle = nil
         initialized = false
+        activeTransport = nil
         outputBuffer.removeAll(keepingCapacity: false)
         standardErrorTail.removeAll(keepingCapacity: false)
 
@@ -467,6 +493,7 @@ public actor CodexAppServerClient {
             throw AppServerProtocolError.processUnavailable
         }
         unixConnection = connection
+        activeTransport = .controlSocket
     }
 
     private func startProcess() throws {
@@ -528,6 +555,7 @@ public actor CodexAppServerClient {
         }
 
         self.process = process
+        activeTransport = .childProcess
         inputHandle = input.fileHandleForWriting
         outputHandle = output.fileHandleForReading
         errorHandle = standardError.fileHandleForReading

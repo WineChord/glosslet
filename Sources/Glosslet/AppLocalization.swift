@@ -107,6 +107,10 @@ enum L10n {
         "Refreshing Codex task…",
         "正在刷新 Codex 任务…"
     )
+    static let preparingCodex = text(
+        "Preparing Codex…",
+        "正在准备 Codex…"
+    )
     static let optimizingTask = text(
         "Optimizing Codex task…",
         "正在优化 Codex 任务…"

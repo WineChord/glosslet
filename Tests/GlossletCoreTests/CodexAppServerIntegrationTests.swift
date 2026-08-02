@@ -25,6 +25,104 @@ final class CodexAppServerIntegrationTests: XCTestCase {
         XCTAssertEqual(first.map(\.id), second.map(\.id))
     }
 
+    func testReconnectResumesPersistentThreadOnNewConnection() async throws {
+        guard
+            ProcessInfo.processInfo.environment[
+                "GLOSSLET_RUN_CODEX_INTEGRATION"
+            ] == "1"
+        else {
+            throw XCTSkip(
+                "Set GLOSSLET_RUN_CODEX_INTEGRATION=1 to run against Codex."
+            )
+        }
+
+        let client = CodexAppServerClient()
+        let stream = await client.eventStream()
+        let models = try await client.listModels()
+        let choice = ModelSelection.recommended(from: models)
+        XCTAssertNotNil(choice.model)
+        XCTAssertEqual(choice.reasoningEffort, "low")
+        XCTAssertEqual(choice.serviceTier, "priority")
+        let workspace = GlossletConstants.defaultWorkspaceURL
+        try FileManager.default.createDirectory(
+            at: workspace,
+            withIntermediateDirectories: true
+        )
+        let initialStatus = await client.connectionStatus()
+        let threadID = try await client.startThread(
+            model: choice.model,
+            serviceTier: choice.serviceTier,
+            workingDirectory: workspace,
+            persistent: true
+        )
+        let continuityMarker =
+            "GLOSSLET_RECOVERY_\(UUID().uuidString.prefix(8))"
+        let firstResult = try await Self.runTurn(
+            client: client,
+            stream: stream,
+            threadID: threadID,
+            text:
+                "Remember \(continuityMarker) for the next turn. "
+                + "Reply with exactly READY.",
+            choice: choice,
+            workspace: workspace
+        )
+        XCTAssertTrue(firstResult.contains("READY"), firstResult)
+
+        await client.shutdown()
+        let disconnectedStatus = await client.connectionStatus()
+        XCTAssertFalse(disconnectedStatus.isReady)
+        XCTAssertEqual(
+            disconnectedStatus.lastTransport,
+            initialStatus.transport
+        )
+
+        let resumeStartedAt = Date()
+        let resumedID = try await client.resumeThread(
+            id: threadID,
+            model: choice.model,
+            serviceTier: choice.serviceTier,
+            workingDirectory: workspace
+        )
+        let resumeDuration = Date().timeIntervalSince(resumeStartedAt)
+        let reconnectedStatus = await client.connectionStatus()
+
+        XCTAssertEqual(resumedID, threadID)
+        XCTAssertTrue(reconnectedStatus.isReady)
+        XCTAssertNotEqual(
+            reconnectedStatus.generation,
+            initialStatus.generation
+        )
+        let recoveredTurnStartedAt = Date()
+        let recoveredResult = try await Self.runTurn(
+            client: client,
+            stream: stream,
+            threadID: threadID,
+            text:
+                "Reply with exactly the marker from my previous message "
+                + "and nothing else.",
+            choice: choice,
+            workspace: workspace
+        )
+        let recoveredTurnDuration = Date().timeIntervalSince(
+            recoveredTurnStartedAt
+        )
+        XCTAssertTrue(
+            recoveredResult.contains(continuityMarker),
+            recoveredResult
+        )
+        print(
+            "GLOSSLET_RECOVERY_RESUME_SECONDS="
+                + String(format: "%.3f", resumeDuration)
+        )
+        print(
+            "GLOSSLET_RECOVERY_TURN_SECONDS="
+                + String(format: "%.3f", recoveredTurnDuration)
+        )
+        try await client.archiveThread(threadID: threadID)
+        await client.shutdown()
+    }
+
     func testPersistentThreadStreamsAndCompletes() async throws {
         guard
             ProcessInfo.processInfo.environment[

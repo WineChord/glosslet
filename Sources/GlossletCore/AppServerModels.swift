@@ -189,6 +189,34 @@ public enum AppServerEvent: Equatable, Sendable {
     case notification(method: String, params: JSONValue)
 }
 
+public enum CodexConnectionTransport: String, Equatable, Sendable {
+    case controlSocket
+    case childProcess
+}
+
+public struct CodexConnectionStatus: Equatable, Sendable {
+    public let isReady: Bool
+    public let generation: Int?
+    public let transport: CodexConnectionTransport?
+    public let lastTransport: CodexConnectionTransport?
+    public let preferredControlSocketAvailable: Bool
+
+    public init(
+        isReady: Bool,
+        generation: Int?,
+        transport: CodexConnectionTransport?,
+        lastTransport: CodexConnectionTransport?,
+        preferredControlSocketAvailable: Bool
+    ) {
+        self.isReady = isReady
+        self.generation = generation
+        self.transport = transport
+        self.lastTransport = lastTransport
+        self.preferredControlSocketAvailable =
+            preferredControlSocketAvailable
+    }
+}
+
 public enum AppServerProtocolError: LocalizedError, Equatable {
     case codexBinaryNotFound
     case codexNotAuthenticated
